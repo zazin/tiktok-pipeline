@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 import urllib.error
 import urllib.request
@@ -33,6 +34,36 @@ from typing import Optional
 
 
 TOKENROUTER_BASE_URL = "https://api.tokenrouter.com/v1"
+
+# Default variety pools used (for persona/profile ideas) to deterministically
+# vary outfit / setting / pose per run, instead of relying on the LLM to vary.
+# A profile can override any of these via a "variety" object in profile.json.
+DEFAULT_VARIETY = {
+    "outfits": [
+        "a mustard-yellow oversized sweater", "a sage-green cardigan over a tee",
+        "a black graphic tee", "a powder-blue button-up shirt",
+        "a rust-orange knit top", "a lilac hoodie", "a striped long-sleeve",
+        "a denim jacket over a white tank", "a terracotta slip dress",
+        "a burgundy oversized shirt", "a teal blouse", "a soft-pink cardigan",
+        "an olive utility shirt", "a navy-and-cream striped sweater",
+        "a maroon corduroy overshirt", "a forest-green hoodie",
+    ],
+    "settings": [
+        "at a bathroom mirror", "in a sunlit bedroom by the window",
+        "in a cozy cafe", "at a bedroom vanity", "in a bright kitchen",
+        "on an apartment balcony", "in a pharmacy skincare aisle",
+        "against a clean studio backdrop", "in the car in daylight",
+        "at a wooden desk with a ring light", "on a sofa in a living room",
+        "by a window with sheer curtains",
+    ],
+    "poses": [
+        "standing and holding a product up to the light", "a mirror selfie",
+        "sitting at a vanity mid-routine", "an over-the-shoulder glance",
+        "a close-up of her face applying a product", "mid-laugh holding the product",
+        "leaning on a counter", "walking and glancing back at the camera",
+        "cross-legged showing a product to the camera", "applying product with fingertips",
+    ],
+}
 
 # Fast & cheap Anthropic model for one-line idea generation. Other options on
 # TokenRouter: anthropic/claude-sonnet-4.6, anthropic/claude-opus-4.8, etc.
@@ -91,6 +122,8 @@ def generate_idea(
     theme: Optional[str] = None,
     *,
     persona: Optional[str] = None,
+    variety: Optional[dict] = None,
+    seed: Optional[int] = None,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 200,
     timeout: int = 60,
@@ -104,6 +137,11 @@ def generate_idea(
         persona: Optional persona description. When set (a profile is in use),
             the idea describes a SCENE for that person rather than inventing a
             new subject — the person's identity is fixed by a reference image.
+        variety: Optional dict overriding the outfit/setting/pose pools
+            (keys "outfits", "settings", "poses"). Only used with a persona.
+            Missing keys fall back to DEFAULT_VARIETY.
+        seed: Optional RNG seed for the random outfit/setting/pose pick — pass
+            it to reproduce a specific look; omit for a fresh random pick.
         model: TokenRouter model ID (an Anthropic chat model).
         max_tokens: Response cap (the idea is short, so this is generous).
         timeout: HTTP timeout in seconds.
@@ -120,6 +158,25 @@ def generate_idea(
         parts = [f"Persona: {persona.strip()}"]
         if theme and theme.strip():
             parts.append(f"Theme/occasion to work into the scene: {theme.strip()}.")
+
+        # Deterministic variety: randomly pick a concrete outfit / setting / pose
+        # so successive posts differ, instead of relying on the LLM to vary.
+        pools = {**DEFAULT_VARIETY, **(variety or {})}
+        rng = random.Random(seed)
+        picks = []
+        if pools.get("outfits"):
+            picks.append(f"outfit = {rng.choice(pools['outfits'])}")
+        if pools.get("settings"):
+            picks.append(f"setting = {rng.choice(pools['settings'])}")
+        if pools.get("poses"):
+            picks.append(f"pose = {rng.choice(pools['poses'])}")
+        if picks:
+            parts.append(
+                "For THIS post specifically, use approximately: "
+                + "; ".join(picks)
+                + " — adapt these naturally to the theme and persona."
+            )
+
         parts.append("Describe one on-brand photo scene for this person.")
         user_msg = " ".join(parts)
     else:
@@ -200,10 +257,25 @@ def _cli() -> int:
         default=DEFAULT_MODEL,
         help=f"TokenRouter Anthropic model ID (default: {DEFAULT_MODEL})",
     )
+    parser.add_argument("--profile", default=None, help="Profile name to use its persona + variety pools")
+    parser.add_argument("--seed", type=int, default=None, help="Seed the outfit/setting/pose pick (reproducible); omit for fresh variety")
     args = parser.parse_args()
 
+    persona = variety = None
+    if args.profile:
+        from profile_loader import load_profile, ProfileError
+        try:
+            prof = load_profile(args.profile)
+        except ProfileError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        persona, variety = prof["persona"], prof.get("variety")
+
     try:
-        idea = generate_idea(theme=args.theme, model=args.model)
+        idea = generate_idea(
+            theme=args.theme, persona=persona, variety=variety, seed=args.seed,
+            model=args.model,
+        )
     except IdeaError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

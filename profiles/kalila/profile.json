@@ -10,6 +10,29 @@
     "#Rp120RibuChallenge — Gen Z budget skincare: curating local and pharmacy products under Rp120,000 per item, organized by skin concern; the go-to reference on payday and live-shopping sessions.",
     "#2MingguPakaiDulu — honest real-time testing: a series trying one new product for 2 weeks with periodic skin updates, including when the product fails, building a community that waits for her 'honest result'."
   ],
+  "variety": {
+    "outfits": [
+      "a mustard-yellow oversized sweater", "a sage-green cardigan over a white tee",
+      "a black graphic tee", "a powder-blue button-up shirt", "a rust-orange knit top",
+      "a lilac hoodie", "a striped long-sleeve top", "a denim jacket over a tank",
+      "a terracotta slip dress", "a burgundy oversized shirt", "a teal blouse",
+      "a soft-pink cardigan", "an olive utility shirt", "a maroon corduroy overshirt"
+    ],
+    "settings": [
+      "at a bathroom mirror", "in a sunlit bedroom by the window", "in a cozy cafe",
+      "at a bedroom vanity with skincare laid out", "in a bright kitchen",
+      "on an apartment balcony", "in a pharmacy skincare aisle",
+      "against a clean studio backdrop", "in the car in daylight",
+      "at a wooden desk with a ring light", "on a sofa in the living room"
+    ],
+    "poses": [
+      "standing and holding a product up to the light", "a mirror selfie with phone",
+      "sitting at the vanity mid-routine", "an over-the-shoulder glance at the camera",
+      "a close-up applying product to her cheek", "mid-laugh holding a product",
+      "leaning on the bathroom counter", "applying product with fingertips",
+      "showing the product label to the camera"
+    ]
+  },
   "reference_images": [
     "make_a_portrait_of_her_202606021735.jpeg",
     "make_a_full_body_image_202606031141.jpeg"

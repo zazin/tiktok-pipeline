@@ -63,6 +63,7 @@ def run_pipeline(
     image_retries: int = 2,
     profile: Optional[str] = None,
     profiles_dir: Optional[str] = None,
+    seed: Optional[int] = None,
     to_phone: bool = True,
     phone_dest: Optional[str] = None,
     phone_serial: Optional[str] = None,
@@ -92,10 +93,12 @@ def run_pipeline(
     # A profile supplies a persona (steers idea + caption) and reference
     # image(s) that preserve the person's identity in the generated image.
     persona = None
+    variety = None
     if profile:
         from profile_loader import load_profile  # ProfileError is fatal
         prof = load_profile(profile, profiles_dir=profiles_dir)
         persona = prof["persona"]
+        variety = prof.get("variety")
         # Profile reference images take precedence over any explicit --ref.
         reference_image = prof["reference_paths"]
         reference_kind = prof["reference_kind"]
@@ -107,7 +110,10 @@ def run_pipeline(
         print(f"Idea (manual): {idea}")
     else:
         from idea_generator import generate_idea, DEFAULT_MODEL as IDEA_MODEL
-        idea = generate_idea(theme=theme, persona=persona, model=idea_model or IDEA_MODEL)
+        idea = generate_idea(
+            theme=theme, persona=persona, variety=variety, seed=seed,
+            model=idea_model or IDEA_MODEL,
+        )
         print(f"Idea (AI): {idea}")
 
     # --- 1b. Caption (separate text-only AI call, BEFORE the image) -------
@@ -217,6 +223,7 @@ def _cli() -> int:
     parser.add_argument("--retries", type=int, default=2, help="Extra image attempts on a model refusal / no-image response (default: 2)")
     parser.add_argument("--profile", default=None, help="Profile name (profiles/<name>/): uses its persona + reference images")
     parser.add_argument("--profiles-dir", default=None, help="Profiles root folder (default: profiles/)")
+    parser.add_argument("--seed", type=int, default=None, help="Seed the random outfit/setting/pose pick (reproducible look); omit for fresh variety")
     # Delivery: phone
     parser.add_argument("--no-phone", action="store_true", help="Skip pushing to the Android phone")
     parser.add_argument("--dest", default=None, help="Remote dir on the phone (default: /sdcard/Pictures)")
@@ -244,6 +251,7 @@ def _cli() -> int:
             image_retries=args.retries,
             profile=args.profile,
             profiles_dir=args.profiles_dir,
+            seed=args.seed,
             to_phone=not args.no_phone,
             phone_dest=args.dest,
             phone_serial=args.serial,

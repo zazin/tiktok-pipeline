@@ -115,11 +115,16 @@ def load_profile(name: str, *, profiles_dir: Optional[str] = None) -> dict:
     if kind not in ("preserve", "feature"):
         raise ProfileError(f"Profile {name!r}: reference_kind must be 'preserve' or 'feature', got {kind!r}")
 
+    variety = cfg.get("variety")
+    if variety is not None and not isinstance(variety, dict):
+        raise ProfileError(f"Profile {name!r}: 'variety' must be an object of pools, got {type(variety).__name__}")
+
     return {
         "name": cfg.get("name", name),
         "persona": _build_persona(cfg),
         "reference_paths": reference_paths,
         "reference_kind": kind,
+        "variety": variety,
         "dir": str(pdir),
     }
 

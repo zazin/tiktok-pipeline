@@ -172,8 +172,8 @@ def _cli() -> int:
     parser.add_argument("paths", nargs="+", help="Image file path(s) to upload")
     parser.add_argument(
         "--folder",
-        default="/",
-        help="Destination folder on ImageKit (default: /)",
+        default="/tiktok",
+        help="Destination folder on ImageKit (default: /tiktok)",
     )
     parser.add_argument(
         "--name",

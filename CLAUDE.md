@@ -13,7 +13,7 @@ A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image and
 
 `tiktok_pipeline.py` runs idea → generate → (phone AND imagekit). The two delivery targets are independent and non-fatal: a failure in one is recorded and reported but does not abort the other or the run. `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
 
-All generated images land in one folder (`tiktok_output/`, override with `--output-dir`). The folder is committed via `tiktok_output/.gitkeep`; its image contents are gitignored.
+All generated images land in one folder (`tiktok_output/`, override with `--output-dir`). The folder is committed via `tiktok_output/.gitkeep`; its image contents are gitignored. Auto-named files follow a consistent, chronologically sortable timestamp format — `tiktok_YYYYMMDD_HHMMSS.<ext>` (built by `_timestamped_path` in `tiktok_image_generator.py`, with a `_N` suffix only on same-second collisions). Passing `--out` overrides the name entirely.
 
 ## Commands
 

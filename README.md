@@ -75,7 +75,7 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
 ## Pipeline Flow
 
 1. (optional) Theme → AI → image idea  *(skipped if you pass `--prompt`)*
-2. Idea → TokenRouter image model → 9:16 PNG in `tiktok_output/`
+2. Idea → TokenRouter image model → 9:16 image in `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`
 3. PNG → **phone** (adb push) **and** → **ImageKit** (CDN URL), independently
    — a failure in one delivery target does not abort the other
 

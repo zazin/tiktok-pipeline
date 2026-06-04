@@ -97,9 +97,27 @@ def _get_api_key() -> str:
     return key
 
 
-def _slugify(text: str, max_len: int = 40) -> str:
-    s = re.sub(r"[^a-zA-Z0-9]+", "_", text.lower()).strip("_")
-    return s[:max_len] or "image"
+# Auto-generated filenames use a consistent, chronologically sortable timestamp:
+#   tiktok_YYYYMMDD_HHMMSS.<ext>   e.g. tiktok_20260604_141432.png
+FILENAME_PREFIX = "tiktok"
+FILENAME_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+
+
+def _timestamped_path(out_dir: Path, ext: str) -> Path:
+    """
+    Build a consistent output path of the form tiktok_YYYYMMDD_HHMMSS.<ext>.
+
+    If a file with that name already exists (multiple images generated within
+    the same second), a `_N` counter is appended to keep names unique without
+    breaking the timestamp format.
+    """
+    stamp = time.strftime(FILENAME_TIMESTAMP_FORMAT)
+    candidate = out_dir / f"{FILENAME_PREFIX}_{stamp}.{ext}"
+    counter = 1
+    while candidate.exists():
+        candidate = out_dir / f"{FILENAME_PREFIX}_{stamp}_{counter}.{ext}"
+        counter += 1
+    return candidate
 
 
 def _extract_data_url(response: dict) -> str:
@@ -343,7 +361,7 @@ def generate_image(
 
     Args:
         prompt: User's idea (e.g. "a cat smiling wearing red boots").
-        output: Output path. If None, a slug-based name is created under
+        output: Output path. If None, a timestamped name is created under
             `output_dir`.
         model: TokenRouter model ID. Must be an image-capable model.
         style_template: Optional wrapper template with a `{idea}` placeholder.
@@ -443,8 +461,7 @@ def generate_image(
     if output is None:
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        stamp = int(time.time())
-        out_path = out_dir / f"{_slugify(prompt)}_{stamp}.{ext}"
+        out_path = _timestamped_path(out_dir, ext)
     else:
         out_path = Path(output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -462,7 +479,7 @@ def _cli() -> int:
         description="Generate a TikTok-style image from a text prompt via TokenRouter."
     )
     parser.add_argument("prompt", help='Text idea, e.g. "a cat smiling wearing red boots"')
-    parser.add_argument("--out", "-o", default=None, help="Output file path (default: auto-named PNG in tiktok_output/)")
+    parser.add_argument("--out", "-o", default=None, help="Output file path (default: tiktok_output/tiktok_YYYYMMDD_HHMMSS.<ext>)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"TokenRouter model ID (default: {DEFAULT_MODEL})")
     parser.add_argument("--raw-prompt", action="store_true", help="Use the prompt as-is without the TikTok style template")
     parser.add_argument(

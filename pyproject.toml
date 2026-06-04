@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 tiktok-pipeline = "tiktok_pipeline:_cli"
 tiktok-generate = "tiktok_image_generator:_cli"
+tiktok-upload = "tiktok_upload:_cli"
 tiktok-idea = "idea_generator:_cli"
 tiktok-caption = "caption_generator:_cli"
 tiktok-profile = "profile_loader:_cli"
@@ -30,6 +31,7 @@ build-backend = "hatchling.build"
 include = [
     "tiktok_pipeline.py",
     "tiktok_image_generator.py",
+    "tiktok_upload.py",
     "idea_generator.py",
     "caption_generator.py",
     "profile_loader.py",

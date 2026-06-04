@@ -64,6 +64,7 @@ build() {
 echo "Regenerating skill script bundles from $ROOT ..."
 
 build tiktok-caption   caption_generator      "caption_generator env_loader"                                                                              ""
-build tiktok-image     tiktok_image_generator "tiktok_image_generator imagekit_uploader airtable_logger env_loader"                                       '"pillow>=10.0", "requests>=2.31"'
+build tiktok-image     tiktok_image_generator "tiktok_image_generator env_loader"                                                                          '"pillow>=10.0"'
+build tiktok-upload    tiktok_upload          "tiktok_upload imagekit_uploader airtable_logger env_loader"                                                 '"requests>=2.31"'
 
 echo "Done. (SKILL.md / README.md are hand-maintained and not touched by this script.)"

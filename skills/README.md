@@ -24,9 +24,11 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 | Skill | What it does | Required env |
 |---|---|---|
 | [`tiktok-caption`](tiktok-caption/SKILL.md) | Write `{caption, description}` for a concept | `TOKENROUTER_API_KEY` |
-| [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image, optionally upload to ImageKit + log to Airtable | `TOKENROUTER_API_KEY` (`IMAGEKIT_PRIVATE_KEY` for `--upload`/`--airtable`, `AIRTABLE_*` for `--airtable`) |
+| [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image to a local PNG (multi-angle `--ref`) | `TOKENROUTER_API_KEY` |
+| [`tiktok-upload`](tiktok-upload/SKILL.md) | Upload an image to ImageKit + write a Posts record to Airtable | `IMAGEKIT_PRIVATE_KEY`, `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
 
-The skills are independent: install only the capabilities you need.
+The skills are independent: install only the capabilities you need. A common chain
+is `tiktok-image` (generate a PNG) → `tiktok-upload` (publish + record it).
 
 ## Runtime
 

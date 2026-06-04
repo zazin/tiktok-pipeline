@@ -49,6 +49,7 @@ def upload_and_log(
     description: Optional[str] = None,
     profile: Optional[str] = None,
     status: str = "pending",
+    unique_file_name: bool = False,
     to_airtable: bool = True,
 ) -> dict:
     """
@@ -62,6 +63,10 @@ def upload_and_log(
         description: Airtable Description field.
         profile: Airtable Profile field.
         status: Airtable Status field (default "pending").
+        unique_file_name: When False (default), the file keeps its exact name on
+            ImageKit (generated names are already timestamped/unique, so this gives
+            clean, valid filenames). Set True to let ImageKit append a random
+            suffix (which can include a leading dash, e.g. "name_-Ab12.png").
         to_airtable: When False, only upload to ImageKit and skip the record.
 
     Returns:
@@ -74,7 +79,7 @@ def upload_and_log(
 
     path = Path(image_path)
     try:
-        up = upload_image(str(path), folder=folder)
+        up = upload_image(str(path), folder=folder, use_unique_file_name=unique_file_name)
     except ImageKitError as e:
         raise UploadError(f"ImageKit upload failed: {e}") from e
 
@@ -89,7 +94,9 @@ def upload_and_log(
             "Description": description,
             "ImageURL": up.get("url"),
             "ImageKitFileId": up.get("fileId"),
-            "ImagePath": path.name,
+            # The name ImageKit actually stored it under (matches ImageURL),
+            # not the local filename — so the record always references the real file.
+            "ImagePath": up.get("name") or path.name,
             "Profile": profile,
             "Status": status,
         }
@@ -117,6 +124,7 @@ def _cli() -> int:
     parser.add_argument("--description", default=None, help="Airtable Description field")
     parser.add_argument("--profile", default=None, help="Airtable Profile field")
     parser.add_argument("--status", default="pending", help="Airtable Status field (default: pending)")
+    parser.add_argument("--unique", action="store_true", help="Let ImageKit append a random suffix to the file name (off by default — names are kept clean/exact)")
     parser.add_argument("--no-airtable", action="store_true", help="Only upload to ImageKit; skip the Airtable record")
     parser.add_argument("--json", action="store_true", help="Print the full result JSON")
     args = parser.parse_args()
@@ -130,6 +138,7 @@ def _cli() -> int:
             description=args.description,
             profile=args.profile,
             status=args.status,
+            unique_file_name=args.unique,
             to_airtable=not args.no_airtable,
         )
     except UploadError as e:

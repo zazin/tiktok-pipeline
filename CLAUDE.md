@@ -29,6 +29,9 @@ uv run tiktok-pipeline --theme "cyberpunk street food"
 # Own prompt, ImageKit only (no phone)
 uv run tiktok-pipeline --prompt "neon skyline" --no-phone
 
+# As a recurring character (persona + reference-image identity)
+uv run tiktok-pipeline --profile kalila --theme "morning skincare routine"
+
 # Generate (auto-named PNG under tiktok_output/)
 uv run tiktok-generate "a cat smiling wearing red boots"
 
@@ -43,7 +46,7 @@ uv run imagekit-upload img.png --folder /tiktok
 uv run imagekit-upload *.jpg --folder /gallery --json
 ```
 
-Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-idea`→`idea_generator`, `imagekit-upload`→`imagekit_uploader`, `phone-upload`→`phone_uploader` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
+Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-idea`→`idea_generator`, `tiktok-caption`→`caption_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `phone-upload`→`phone_uploader` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
 
 ## Required environment
 
@@ -60,6 +63,8 @@ A local `.env` is loaded automatically: every module's `_cli()` calls `env_loade
 **TokenRouter is OpenAI-compatible but images come back over the chat endpoint.** `generate_image` POSTs to `/v1/chat/completions` with `modalities: ["image","text"]`; the image is a base64 data URL buried in `choices[0].message.images[0].image_url.url`. `_extract_data_url` defensively walks several possible response shapes (top-level `images`, or `image_url` parts inside a list `content`) because the exact shape varies by model. `_decode_data_url` also handles the case where a model returns a plain `http(s)` URL instead of a data URL.
 
 **Model capability is gated by frozensets, not flags.** `NATIVE_PORTRAIT_MODELS` (Gemini 3.x) return ~9:16 directly so `_resize_for_tiktok` skips cropping when the source aspect is already within 0.02 of target. `REFERENCE_IMAGE_MODELS` gates the `--ref` feature — passing a reference to a non-listed model raises `ImageGenError`. When changing the default model or adding a model, update these sets.
+
+**Refusals are retried; other errors fail fast.** `_extract_data_url` raises `ImageRefusal` (a retryable `ImageGenError` subclass) when the response has no image — either an explicit `refusal` field or empty content. `generate_image` retries on `ImageRefusal` (`retries`, default 2; `--retries` on the generator and pipeline), but HTTP/network/JSON errors fail immediately. Refusals are common on reference-image edits of real faces, so a profile run that fails once often succeeds on retry. Reference images are sent at ≤`MAX_REF_IMAGE_DIM` (1024px, JPEG q90) regardless of on-disk size, so source-image resolution does not change generation cost.
 
 **Aspect ratio is requested two ways** because the endpoint has no reliable size param: the prompt template (`TIKTOK_PROMPT_TEMPLATE`) asks for 9:16 in natural language, and the payload also sends `aspect_ratio`/`size` hints that non-native models silently ignore. The Pillow `_resize_for_tiktok` step is the actual guarantee of 1080x1920 output (`fit` center-crops, `pad` letterboxes, `none` skips).
 

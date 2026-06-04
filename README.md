@@ -1,6 +1,6 @@
 # TikTok Image Pipeline
 
-Generate TikTok-ready 9:16 images with AI, then deliver them to your Android phone (adb) and ImageKit CDN. The whole flow can run fully automatically: an AI invents the image idea, an image model renders it, and it's pushed to both targets.
+Generate TikTok-ready 9:16 images with AI, then deliver them to your Android phone (adb) and ImageKit CDN. The whole flow can run fully automatically: an AI invents the image idea, writes a matching caption, an image model renders it, and it's pushed to both targets. With a **profile**, every image can be the same recurring character (identity preserved from reference photos) on a consistent persona.
 
 ## Files
 
@@ -64,6 +64,11 @@ With `--profile <name>`, the pipeline (1) **preserves the person's identity** by
 reference images to the image model, and (2) **steers the AI idea + caption** with the persona,
 so every image is the same person, on-brand. Inspect a profile with `uv run tiktok-profile <name>`.
 
+Optional fields — `gender`, `generation`, `age`, `industry`, and a `content_pillars` list — are
+folded into the effective persona automatically, so you can keep the structured brand brief in the
+same file. Adding a new character is just `mkdir profiles/<name>/`, drop in photos, write a
+`profile.json` — no code changes.
+
 ### Individual steps
 
 Each stage is also exposed as its own `uv run` command:
@@ -83,6 +88,13 @@ uv run imagekit-upload cat.png --folder /tiktok
 
 # Just generate an idea
 uv run tiktok-idea --theme "cozy coffee shop"
+
+# Just generate a caption + description for a concept
+uv run tiktok-caption "a jade-green matcha latte on white marble"
+
+# List / inspect profiles
+uv run tiktok-profile --list
+uv run tiktok-profile kalila
 ```
 
 You can still run the modules directly (e.g. `uv run python tiktok_pipeline.py ...`) if you prefer.
@@ -100,7 +112,10 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
 
 1. (optional) Theme → AI → image idea  *(skipped if you pass `--prompt`)*
 2. Idea → AI → **caption + description** (separate text-only call; `--no-caption` to skip)
-3. Idea → TokenRouter image model → 9:16 image in `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`
+3. Idea (+ profile reference images, if `--profile`) → TokenRouter image model → 9:16 image in
+   `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`. The model occasionally returns no image
+   (a refusal, common on reference-image edits of real faces); the generator auto-retries
+   (`--retries`, default 2) before failing.
 4. Image → **phone** (adb push) **and** → **ImageKit** (CDN URL + caption/description as
    custom metadata), independently — a failure in one delivery target does not abort the other
 

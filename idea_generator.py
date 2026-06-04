@@ -58,6 +58,9 @@ _PERSONA_SYSTEM_PROMPT = (
     "photo scene for them: the setting, their pose, wardrobe/outfit, the mood and "
     "lighting — something on-brand for the persona below. One sentence, under 40 "
     "words, suitable for a vertical 9:16 portrait. "
+    "VARY THE WARDROBE every time: pick ONE specific outfit with a definite, "
+    "non-neutral colour or print that fits the persona — do NOT default to white, "
+    "cream, or beige, and avoid repeating the same garment. "
     "Output ONLY the scene text — no preamble, no quotes, no hashtags, no "
     "explanation."
 )

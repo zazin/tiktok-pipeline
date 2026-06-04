@@ -7,9 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image and delivers it to two targets. `tiktok_pipeline.py` is the top-level orchestrator; the other modules are independent, individually-runnable stages it chains together via lazy imports:
 
 1. `idea_generator.py` — (optional) theme → Claude on TokenRouter → one-line image idea
-2. `tiktok_image_generator.py` — prompt → TokenRouter image model → 9:16 PNG in `tiktok_output/`
-3. `phone_uploader.py` — local image → Android phone over USB (adb push)
-4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
+2. `caption_generator.py` — idea → Claude on TokenRouter → `{caption, description}` (text-only call, runs BEFORE the image so it can be attached to the upload)
+3. `tiktok_image_generator.py` — prompt → TokenRouter image model → 9:16 PNG in `tiktok_output/`
+4. `phone_uploader.py` — local image → Android phone over USB (adb push)
+5. `imagekit_uploader.py` — local image → ImageKit upload (caption/description as custom metadata) → public CDN URL
 
 `tiktok_pipeline.py` runs idea → generate → (phone AND imagekit). The two delivery targets are independent and non-fatal: a failure in one is recorded and reported but does not abort the other or the run. `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
 
@@ -66,4 +67,6 @@ A local `.env` is loaded automatically: every module's `_cli()` calls `env_loade
 
 **Errors are funneled through module-specific exceptions** (`ImageGenError`, `ImageKitError`, `IdeaError`, `PhonePushError`); CLIs catch these and return non-zero. `upload_images` (batch) and the pipeline's two delivery steps deliberately do NOT raise — they collect per-target `{"status": "success"|"failed"}` so one failure doesn't abort the rest.
 
-**The pipeline isolates delivery failures.** `run_pipeline` (`tiktok_pipeline.py`) treats the idea and image-generation steps as fatal, but wraps each delivery target (phone, ImageKit) in its own try/except. It returns a result dict with per-target status and only exits non-zero if *every requested* delivery target failed.
+**The pipeline isolates delivery failures.** `run_pipeline` (`tiktok_pipeline.py`) treats the idea and image-generation steps as fatal, but wraps the caption step and each delivery target (phone, ImageKit) in its own try/except. It returns a result dict with per-target status and only exits non-zero if *every requested* delivery target failed.
+
+**Caption/description hand-off via ImageKit custom metadata.** The caption step runs before image generation; the result is passed to `upload_image(..., custom_metadata={"caption":..., "description":...})`, which serializes it as the upload's `customMetadata` JSON. The `caption` and `description` custom-metadata fields must already exist in the ImageKit account (created once via the `customMetadataFields` API). The tiktok-agent reads them back from the file listing to post the AI caption.

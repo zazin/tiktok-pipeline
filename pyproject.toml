@@ -13,6 +13,7 @@ dependencies = [
 tiktok-pipeline = "tiktok_pipeline:_cli"
 tiktok-generate = "tiktok_image_generator:_cli"
 tiktok-idea = "idea_generator:_cli"
+tiktok-caption = "caption_generator:_cli"
 imagekit-upload = "imagekit_uploader:_cli"
 phone-upload = "phone_uploader:_cli"
 
@@ -28,6 +29,7 @@ include = [
     "tiktok_pipeline.py",
     "tiktok_image_generator.py",
     "idea_generator.py",
+    "caption_generator.py",
     "imagekit_uploader.py",
     "phone_uploader.py",
     "env_loader.py",

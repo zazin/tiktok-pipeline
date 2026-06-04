@@ -51,6 +51,8 @@ def run_pipeline(
     theme: Optional[str] = None,
     model: Optional[str] = None,
     idea_model: Optional[str] = None,
+    caption: bool = True,
+    caption_model: Optional[str] = None,
     output: Optional[str] = None,
     output_dir: str = "tiktok_output",
     resize: str = "fit",
@@ -92,6 +94,21 @@ def run_pipeline(
         idea = generate_idea(theme=theme, model=idea_model or IDEA_MODEL)
         print(f"Idea (AI): {idea}")
 
+    # --- 1b. Caption (separate text-only AI call, BEFORE the image) -------
+    # Generated up front so it can be attached to the ImageKit upload as
+    # custom metadata. Non-fatal: a caption failure must not block the image.
+    caption_text = ""
+    description_text = ""
+    if caption:
+        try:
+            from caption_generator import generate_caption, DEFAULT_MODEL as CAP_MODEL
+            cap = generate_caption(idea, model=caption_model or CAP_MODEL)
+            caption_text = cap.get("caption", "")
+            description_text = cap.get("description", "")
+            print(f"Caption: {caption_text}")
+        except Exception as e:  # CaptionError or import error
+            print(f"Caption: FAILED — {e}", file=sys.stderr)
+
     # --- 2. Generate -----------------------------------------------------
     # Make sure the image storage folder exists (generate_image also creates it
     # when picking an auto name, but we ensure it up front so it always exists).
@@ -114,6 +131,8 @@ def run_pipeline(
 
     result: dict = {
         "idea": idea,
+        "caption": caption_text,
+        "description": description_text,
         "path": str(path),
         "phone": {"status": "skipped"},
         "imagekit": {"status": "skipped"},
@@ -137,7 +156,16 @@ def run_pipeline(
     if to_imagekit:
         try:
             from imagekit_uploader import upload_image, ImageKitError
-            data = upload_image(str(path), folder=imagekit_folder)
+            cm = {}
+            if caption_text:
+                cm["caption"] = caption_text
+            if description_text:
+                cm["description"] = description_text
+            data = upload_image(
+                str(path),
+                folder=imagekit_folder,
+                custom_metadata=cm or None,
+            )
             url = data.get("url", "")
             result["imagekit"] = {"status": "success", "url": url}
             print(f"ImageKit: {url}")
@@ -160,6 +188,8 @@ def _cli() -> int:
     parser.add_argument("--theme", default=None, help="Theme to steer the AI idea (ignored if --prompt is set)")
     parser.add_argument("--model", default=None, help="TokenRouter image model ID (default: generator's default)")
     parser.add_argument("--idea-model", default=None, help="TokenRouter Anthropic model for idea generation (default: anthropic/claude-haiku-4.5)")
+    parser.add_argument("--no-caption", action="store_true", help="Skip AI caption/description generation")
+    parser.add_argument("--caption-model", default=None, help="TokenRouter Anthropic model for caption generation (default: anthropic/claude-haiku-4.5)")
     parser.add_argument("--out", "-o", default=None, help="Exact output image path (overrides --output-dir auto-naming)")
     parser.add_argument("--output-dir", default="tiktok_output", help="Folder to store generated images (default: tiktok_output/)")
     parser.add_argument("--resize", choices=["fit", "pad", "none"], default="fit", help="Resize strategy (default: fit)")
@@ -182,6 +212,8 @@ def _cli() -> int:
             theme=args.theme,
             model=args.model,
             idea_model=args.idea_model,
+            caption=not args.no_caption,
+            caption_model=args.caption_model,
             output=args.out,
             output_dir=args.output_dir,
             resize=args.resize,
@@ -205,6 +237,8 @@ def _cli() -> int:
     ik = result["imagekit"]["status"]
     print("\n--- Summary ---")
     print(f"idea:     {result['idea']}")
+    if result.get("caption"):
+        print(f"caption:  {result['caption']}")
     print(f"image:    {result['path']}")
     print(f"phone:    {phone}" + (f" ({result['phone'].get('remote','')})" if phone == "success" else ""))
     print(f"imagekit: {ik}" + (f" ({result['imagekit'].get('url','')})" if ik == "success" else ""))

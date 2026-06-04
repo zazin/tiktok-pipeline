@@ -8,6 +8,7 @@ Generate TikTok-ready 9:16 images with AI, then deliver them to your Android pho
 |------|---------|
 | `tiktok_pipeline.py` | **Top-level app** — AI idea → image → phone + ImageKit |
 | `idea_generator.py` | Invent a TikTok image idea via Claude (on TokenRouter) |
+| `caption_generator.py` | Generate a TikTok caption + description (text-only AI call) |
 | `tiktok_image_generator.py` | Generate 9:16 images via TokenRouter API |
 | `phone_uploader.py` | Push images to an Android phone over USB (adb) |
 | `imagekit_uploader.py` | Upload generated images to ImageKit CDN |
@@ -75,9 +76,15 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
 ## Pipeline Flow
 
 1. (optional) Theme → AI → image idea  *(skipped if you pass `--prompt`)*
-2. Idea → TokenRouter image model → 9:16 image in `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`
-3. PNG → **phone** (adb push) **and** → **ImageKit** (CDN URL), independently
-   — a failure in one delivery target does not abort the other
+2. Idea → AI → **caption + description** (separate text-only call; `--no-caption` to skip)
+3. Idea → TokenRouter image model → 9:16 image in `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`
+4. Image → **phone** (adb push) **and** → **ImageKit** (CDN URL + caption/description as
+   custom metadata), independently — a failure in one delivery target does not abort the other
+
+The caption/description travel with the image as ImageKit **custom metadata** (`caption`,
+`description` fields), so the downstream [tiktok-agent](https://github.com/zazin/tiktok-agent)
+can read them back and post the AI caption. Those two custom-metadata fields must exist in the
+ImageKit account (create once via the dashboard or the `customMetadataFields` API).
 
 ## Repo
 

@@ -67,6 +67,7 @@ def upload_image(
     folder: str = "/",
     use_unique_file_name: bool = True,
     tags: Optional[list[str]] = None,
+    custom_metadata: Optional[dict] = None,
     timeout: int = 60,
 ) -> dict:
     """
@@ -80,6 +81,9 @@ def upload_image(
         use_unique_file_name: If True, ImageKit appends a unique suffix to
             avoid collisions. Set False to overwrite by name.
         tags: Optional list of tags to attach to the asset.
+        custom_metadata: Optional dict of ImageKit custom-metadata fields
+            (e.g. {"caption": ..., "description": ...}). The fields must already
+            exist in the ImageKit account's custom-metadata schema.
         timeout: Request timeout in seconds.
 
     Returns:
@@ -110,6 +114,8 @@ def upload_image(
         }
         if tags:
             data["tags"] = ",".join(tags)
+        if custom_metadata:
+            data["customMetadata"] = json.dumps(custom_metadata)
 
         try:
             resp = requests.post(

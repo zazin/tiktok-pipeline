@@ -17,30 +17,32 @@ All generated images land in one folder (`tiktok_output/`, override with `--outp
 
 ## Commands
 
+This project is managed with **uv**. `uv sync` installs deps from `pyproject.toml` / `uv.lock` into `.venv`. Each module is registered as a console script in `[project.scripts]`, so prefer `uv run <script>` over invoking python directly. `adb` (separate, `brew install android-platform-tools`) is needed only for phone delivery.
+
 ```bash
-pip install requests pillow            # only third-party runtime deps; adb for phone delivery
+uv sync                                # create .venv, install pinned deps
 
 # Fully automatic: AI idea -> image -> phone + ImageKit
-python tiktok_pipeline.py --theme "cyberpunk street food"
+uv run tiktok-pipeline --theme "cyberpunk street food"
 
 # Own prompt, ImageKit only (no phone)
-python tiktok_pipeline.py --prompt "neon skyline" --no-phone
+uv run tiktok-pipeline --prompt "neon skyline" --no-phone
 
 # Generate (auto-named PNG under tiktok_output/)
-python tiktok_image_generator.py "a cat smiling wearing red boots"
+uv run tiktok-generate "a cat smiling wearing red boots"
 
 # Generate + upload in one shot
-python tiktok_image_generator.py "neon skyline" --out skyline.png --upload --folder /tiktok
+uv run tiktok-generate "neon skyline" --out skyline.png --upload --folder /tiktok
 
 # Use a reference image (face / product / logo preservation)
-python tiktok_image_generator.py "wearing a santa hat" --ref ./face.jpg --ref-kind preserve
+uv run tiktok-generate "wearing a santa hat" --ref ./face.jpg --ref-kind preserve
 
 # Upload existing image(s)
-python imagekit_uploader.py img.png --folder /tiktok
-python imagekit_uploader.py *.jpg --folder /gallery --json
+uv run imagekit-upload img.png --folder /tiktok
+uv run imagekit-upload *.jpg --folder /gallery --json
 ```
 
-There is no test suite, linter config, or build step in this repo.
+Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-idea`→`idea_generator`, `imagekit-upload`→`imagekit_uploader`, `phone-upload`→`phone_uploader` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
 
 ## Required environment
 

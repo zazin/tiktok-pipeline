@@ -1,0 +1,33 @@
+[project]
+name = "tiktok-pipeline"
+version = "0.1.0"
+description = "Generate TikTok-ready 9:16 images with AI and deliver them to an Android phone (adb) and ImageKit CDN."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0",
+    "requests>=2.31",
+]
+
+[project.scripts]
+tiktok-pipeline = "tiktok_pipeline:_cli"
+tiktok-generate = "tiktok_image_generator:_cli"
+tiktok-idea = "idea_generator:_cli"
+imagekit-upload = "imagekit_uploader:_cli"
+phone-upload = "phone_uploader:_cli"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "tiktok_pipeline.py",
+    "tiktok_image_generator.py",
+    "idea_generator.py",
+    "imagekit_uploader.py",
+    "phone_uploader.py",
+]

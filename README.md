@@ -12,54 +12,63 @@ Generate TikTok-ready 9:16 images with AI, then deliver them to your Android pho
 | `phone_uploader.py` | Push images to an Android phone over USB (adb) |
 | `imagekit_uploader.py` | Upload generated images to ImageKit CDN |
 | `tiktok_output/` | Folder where all generated images are stored |
+| `pyproject.toml` / `uv.lock` | uv project definition, console scripts, pinned deps |
 
 ## Quick Start
 
+This project uses [uv](https://docs.astral.sh/uv/) as its package manager.
+
 ```bash
-# 1. Install deps + set up env
-pip install requests pillow
+# 1. Install deps (creates .venv from pyproject.toml + uv.lock)
+uv sync
+
+# 2. Set up env
 export TOKENROUTER_API_KEY="your_key"     # idea + image generation
 export IMAGEKIT_PRIVATE_KEY="your_key"    # ImageKit upload
 export IMAGEKIT_PUBLIC_KEY="your_key"
 export IMAGEKIT_URL_ENDPOINT="https://ik.imagekit.io/your_id"
 
-# 2. Fully automatic: AI idea → image → phone + ImageKit
-python tiktok_pipeline.py
+# 3. Fully automatic: AI idea → image → phone + ImageKit
+uv run tiktok-pipeline
 
-# 3. Steer the AI idea by theme
-python tiktok_pipeline.py --theme "cyberpunk street food at night"
+# 4. Steer the AI idea by theme
+uv run tiktok-pipeline --theme "cyberpunk street food at night"
 
-# 4. Bring your own prompt, ImageKit only (no phone connected)
-python tiktok_pipeline.py --prompt "neon skyline at dusk" --no-phone
+# 5. Bring your own prompt, ImageKit only (no phone connected)
+uv run tiktok-pipeline --prompt "neon skyline at dusk" --no-phone
 ```
 
 ### Individual steps
 
+Each stage is also exposed as its own `uv run` command:
+
 ```bash
 # Generate only
-python tiktok_image_generator.py "a cat wearing red boots" --out cat.png
+uv run tiktok-generate "a cat wearing red boots" --out cat.png
 
 # Generate + upload to ImageKit
-python tiktok_image_generator.py "neon skyline" --out skyline.png --upload
+uv run tiktok-generate "neon skyline" --out skyline.png --upload
 
 # Push an image to a connected Android phone (USB debugging on)
-python phone_uploader.py cat.png --dest /sdcard/Pictures
+uv run phone-upload cat.png --dest /sdcard/Pictures
 
 # Upload an existing image to ImageKit
-python imagekit_uploader.py cat.png --folder /tiktok
+uv run imagekit-upload cat.png --folder /tiktok
 
 # Just generate an idea
-python idea_generator.py --theme "cozy coffee shop"
+uv run tiktok-idea --theme "cozy coffee shop"
 ```
+
+You can still run the modules directly (e.g. `uv run python tiktok_pipeline.py ...`) if you prefer.
 
 ## Requirements
 
-- Python 3.10+
-- `requests`, `pillow`
+- [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Python 3.10+ (uv provisions this for you)
 - `adb` (`brew install android-platform-tools`) — only for phone delivery
 - Android phone with **USB debugging** enabled — only for phone delivery
 
-The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
+Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and pinned in `uv.lock` — `uv sync` installs them. The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
 
 ## Pipeline Flow
 

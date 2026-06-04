@@ -37,9 +37,10 @@ python3 scripts/idea_generator.py --theme "cyberpunk street food"
 
 ## Profiles
 
-`--profile NAME` loads `profiles/<NAME>/profile.json` relative to the cwd. See the
-profile schema in the `tiktok-pipeline` or `tiktok-profile` skill. You supply your
-own profiles directory; none ships with this skill.
+`--profile NAME` loads `profiles/<NAME>/profile.json` (under `--profiles-dir`,
+default `profiles/`, relative to the cwd). See [refs/PROFILE_SCHEMA.md](refs/PROFILE_SCHEMA.md)
+for the schema and a template. You supply your own profiles directory; none ships
+with this skill.
 
 ## Output & errors
 

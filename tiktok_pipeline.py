@@ -60,6 +60,8 @@ def run_pipeline(
     height: Optional[int] = None,
     reference_image: Optional[str] = None,
     reference_kind: str = "preserve",
+    profile: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
     to_phone: bool = True,
     phone_dest: Optional[str] = None,
     phone_serial: Optional[str] = None,
@@ -85,13 +87,26 @@ def run_pipeline(
     # creds only break the step that actually needs them.
     from tiktok_image_generator import generate_image, ImageGenError, DEFAULT_MODEL
 
+    # --- 0. Profile (optional) -------------------------------------------
+    # A profile supplies a persona (steers idea + caption) and reference
+    # image(s) that preserve the person's identity in the generated image.
+    persona = None
+    if profile:
+        from profile_loader import load_profile  # ProfileError is fatal
+        prof = load_profile(profile, profiles_dir=profiles_dir)
+        persona = prof["persona"]
+        # Profile reference images take precedence over any explicit --ref.
+        reference_image = prof["reference_paths"]
+        reference_kind = prof["reference_kind"]
+        print(f"Profile: {prof['name']} ({len(reference_image)} reference image(s), kind={reference_kind})")
+
     # --- 1. Idea ---------------------------------------------------------
     if prompt and prompt.strip():
         idea = prompt.strip()
         print(f"Idea (manual): {idea}")
     else:
         from idea_generator import generate_idea, DEFAULT_MODEL as IDEA_MODEL
-        idea = generate_idea(theme=theme, model=idea_model or IDEA_MODEL)
+        idea = generate_idea(theme=theme, persona=persona, model=idea_model or IDEA_MODEL)
         print(f"Idea (AI): {idea}")
 
     # --- 1b. Caption (separate text-only AI call, BEFORE the image) -------
@@ -102,7 +117,7 @@ def run_pipeline(
     if caption:
         try:
             from caption_generator import generate_caption, DEFAULT_MODEL as CAP_MODEL
-            cap = generate_caption(idea, model=caption_model or CAP_MODEL)
+            cap = generate_caption(idea, persona=persona, model=caption_model or CAP_MODEL)
             caption_text = cap.get("caption", "")
             description_text = cap.get("description", "")
             print(f"Caption: {caption_text}")
@@ -197,6 +212,8 @@ def _cli() -> int:
     parser.add_argument("--height", type=int, default=None, help="Target height (default: generator's 1920)")
     parser.add_argument("--ref", dest="ref", default=None, metavar="PATH_OR_URL", help="Reference image (face/product/logo) to include")
     parser.add_argument("--ref-kind", dest="ref_kind", choices=["preserve", "feature"], default="preserve", help="How the reference appears (default: preserve)")
+    parser.add_argument("--profile", default=None, help="Profile name (profiles/<name>/): uses its persona + reference images")
+    parser.add_argument("--profiles-dir", default=None, help="Profiles root folder (default: profiles/)")
     # Delivery: phone
     parser.add_argument("--no-phone", action="store_true", help="Skip pushing to the Android phone")
     parser.add_argument("--dest", default=None, help="Remote dir on the phone (default: /sdcard/Pictures)")
@@ -221,6 +238,8 @@ def _cli() -> int:
             height=args.height,
             reference_image=args.ref,
             reference_kind=args.ref_kind,
+            profile=args.profile,
+            profiles_dir=args.profiles_dir,
             to_phone=not args.no_phone,
             phone_dest=args.dest,
             phone_serial=args.serial,

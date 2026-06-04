@@ -63,6 +63,7 @@ def _get_api_key() -> str:
 def generate_caption(
     subject: str,
     *,
+    persona: Optional[str] = None,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 400,
     timeout: int = 60,
@@ -72,6 +73,8 @@ def generate_caption(
 
     Args:
         subject: The image concept/idea/theme the post is about.
+        persona: Optional persona description; when set, the caption is written
+            in that person's voice/niche (a profile is in use).
         model: TokenRouter model ID (an Anthropic chat model).
         max_tokens: Response cap.
         timeout: HTTP timeout in seconds.
@@ -85,12 +88,20 @@ def generate_caption(
     if not subject or not subject.strip():
         raise CaptionError("Subject must not be empty.")
 
+    if persona and persona.strip():
+        user_msg = (
+            f"Persona (write in their voice): {persona.strip()}\n"
+            f"Image concept: {subject.strip()}"
+        )
+    else:
+        user_msg = f"Image concept: {subject.strip()}"
+
     payload = {
         "model": model,
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": f"Image concept: {subject.strip()}"},
+            {"role": "user", "content": user_msg},
         ],
     }
     body = json.dumps(payload).encode()

@@ -9,6 +9,8 @@ Generate TikTok-ready 9:16 images with AI, then deliver them to your Android pho
 | `tiktok_pipeline.py` | **Top-level app** — AI idea → image → phone + ImageKit |
 | `idea_generator.py` | Invent a TikTok image idea via Claude (on TokenRouter) |
 | `caption_generator.py` | Generate a TikTok caption + description (text-only AI call) |
+| `profile_loader.py` | Load a `profiles/<name>/` persona + reference images |
+| `profiles/<name>/` | A persona (`profile.json`) + reference photos of one person |
 | `tiktok_image_generator.py` | Generate 9:16 images via TokenRouter API |
 | `phone_uploader.py` | Push images to an Android phone over USB (adb) |
 | `imagekit_uploader.py` | Upload generated images to ImageKit CDN |
@@ -39,7 +41,28 @@ uv run tiktok-pipeline --theme "cyberpunk street food at night"
 
 # 5. Bring your own prompt, ImageKit only (no phone connected)
 uv run tiktok-pipeline --prompt "neon skyline at dusk" --no-phone
+
+# 6. Generate as a recurring character via a profile (persona + face reference)
+uv run tiktok-pipeline --profile kalila --theme "morning skincare routine"
 ```
+
+### Profiles (recurring characters)
+
+A profile keeps a person consistent across posts. `profiles/<name>/` holds reference
+photos plus a `profile.json`:
+
+```json
+{
+  "name": "Kalila",
+  "persona": "who they are, their vibe, niche and tone…",
+  "reference_images": ["portrait.jpeg", "full_body.jpeg"],
+  "reference_kind": "preserve"
+}
+```
+
+With `--profile <name>`, the pipeline (1) **preserves the person's identity** by passing the
+reference images to the image model, and (2) **steers the AI idea + caption** with the persona,
+so every image is the same person, on-brand. Inspect a profile with `uv run tiktok-profile <name>`.
 
 ### Individual steps
 

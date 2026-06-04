@@ -48,6 +48,20 @@ _SYSTEM_PROMPT = (
     "no numbering, no explanation."
 )
 
+# When a persona/reference image is supplied, the person's identity is fixed by
+# a reference photo, so the idea should describe the SCENE around them, not their
+# face. This keeps the output usable as an image-to-image transformation prompt.
+_PERSONA_SYSTEM_PROMPT = (
+    "You are a creative director for a specific person's TikTok account. "
+    "Their face and identity are FIXED by a reference photo, so do NOT describe "
+    "their facial features, age, or ethnicity. Instead describe ONE concrete "
+    "photo scene for them: the setting, their pose, wardrobe/outfit, the mood and "
+    "lighting — something on-brand for the persona below. One sentence, under 40 "
+    "words, suitable for a vertical 9:16 portrait. "
+    "Output ONLY the scene text — no preamble, no quotes, no hashtags, no "
+    "explanation."
+)
+
 
 class IdeaError(Exception):
     """Raised when idea generation fails."""
@@ -66,6 +80,7 @@ def _get_api_key() -> str:
 def generate_idea(
     theme: Optional[str] = None,
     *,
+    persona: Optional[str] = None,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 200,
     timeout: int = 60,
@@ -76,6 +91,9 @@ def generate_idea(
     Args:
         theme: Optional theme to steer the idea (e.g. "cozy coffee",
             "cyberpunk cars"). If None, the model picks something eye-catching.
+        persona: Optional persona description. When set (a profile is in use),
+            the idea describes a SCENE for that person rather than inventing a
+            new subject — the person's identity is fixed by a reference image.
         model: TokenRouter model ID (an Anthropic chat model).
         max_tokens: Response cap (the idea is short, so this is generous).
         timeout: HTTP timeout in seconds.
@@ -86,19 +104,29 @@ def generate_idea(
     Raises:
         IdeaError: On missing key, API/network error, or empty response.
     """
-    if theme and theme.strip():
-        user_msg = f"Invent one TikTok image idea on the theme: {theme.strip()}."
+    has_persona = bool(persona and persona.strip())
+    if has_persona:
+        system_prompt = _PERSONA_SYSTEM_PROMPT
+        parts = [f"Persona: {persona.strip()}"]
+        if theme and theme.strip():
+            parts.append(f"Theme/occasion to work into the scene: {theme.strip()}.")
+        parts.append("Describe one on-brand photo scene for this person.")
+        user_msg = " ".join(parts)
     else:
-        user_msg = (
-            "Invent one eye-catching TikTok image idea on any trending, "
-            "visually rich theme."
-        )
+        system_prompt = _SYSTEM_PROMPT
+        if theme and theme.strip():
+            user_msg = f"Invent one TikTok image idea on the theme: {theme.strip()}."
+        else:
+            user_msg = (
+                "Invent one eye-catching TikTok image idea on any trending, "
+                "visually rich theme."
+            )
 
     payload = {
         "model": model,
         "max_tokens": max_tokens,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},
         ],
     }

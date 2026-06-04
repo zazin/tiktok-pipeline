@@ -28,7 +28,6 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image (+ optional upload) | `TOKENROUTER_API_KEY` (`IMAGEKIT_PRIVATE_KEY` if `--upload`) |
 | [`imagekit-upload`](imagekit-upload/SKILL.md) | Upload local images → public ImageKit URLs | `IMAGEKIT_PRIVATE_KEY` |
 | [`airtable-log`](airtable-log/SKILL.md) | Write one post record to Airtable | `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
-| [`airtable-migrate`](airtable-migrate/SKILL.md) | Create/extend the Airtable Posts schema (run once) | `AIRTABLE_API_KEY` (schema scopes), `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
 | [`tiktok-profile`](tiktok-profile/SKILL.md) | Load a recurring-character profile | _(none)_ |
 
 The skills are independent: install only the capabilities you need.

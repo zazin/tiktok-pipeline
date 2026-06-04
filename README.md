@@ -162,7 +162,7 @@ with [`npx skills`](https://github.com/vercel-labs/skills):
 
 ```bash
 npx skills add zazin/tiktok-pipeline/skills/tiktok-image      # one capability
-npx skills add zazin/tiktok-pipeline/skills/tiktok-idea       # another
+npx skills add zazin/tiktok-pipeline/skills/tiktok-caption    # another
 ```
 
 The `scripts/` bundle inside each skill is **generated** from the root modules (the

@@ -47,6 +47,8 @@ Without `uv`: `pip install pillow requests` then
 - `--resize fit|pad|none` — `fit` center-crops (default), `pad` letterboxes, `none` skips.
 - `--width N`, `--height N` — target resolution (default 1080x1920).
 - `--ref PATH_OR_URL` — reference image (local path, http(s), or data: URL).
+  **Repeatable**: pass `--ref` several times to give multiple angles of the same
+  subject (e.g. a multi-angle avatar face) for stronger identity preservation.
 - `--ref-kind preserve|feature` — `preserve` keeps the subject identical (faces,
   products); `feature` places the subject into a new scene. Default `preserve`.
 - `--upload` — also upload to ImageKit and print the public URL.
@@ -57,6 +59,24 @@ Without `uv`: `pip install pillow requests` then
 - `--caption TEXT`, `--description TEXT` — Airtable `Caption` / `Description` fields.
 - `--profile NAME` — Airtable `Profile` field.
 - `--status VALUE` — Airtable `Status` field (default `pending`).
+
+## Avatar / reference images
+
+The avatar face photos are **the agent's own identity data, not part of this skill**
+— skills hold reusable code, not per-character assets. Keep them in the consuming
+agent's workspace and pass them at runtime with `--ref`:
+
+```bash
+# the agent stores its own avatar angles, e.g. ./avatar/
+uv run scripts/tiktok_image_generator.py "at a sunlit cafe, holding a latte" \
+  --ref ./avatar/face_front.jpg \
+  --ref ./avatar/face_left.jpg \
+  --ref ./avatar/face_right.jpg \
+  --ref-kind preserve --airtable
+```
+
+You can also host the angles once (e.g. on ImageKit) and pass `--ref https://...`
+URLs instead of local files — handy when the same avatar is reused across runs.
 
 ## Notes & errors
 

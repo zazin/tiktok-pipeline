@@ -12,7 +12,7 @@ With the [`npx skills`](https://github.com/vercel-labs/skills) tool, from this r
 
 ```bash
 npx skills add <owner>/tiktok-pipeline/skills/tiktok-image      # one capability
-npx skills add <owner>/tiktok-pipeline/skills/tiktok-idea       # another
+npx skills add <owner>/tiktok-pipeline/skills/tiktok-caption    # another
 ```
 
 Or install from a local checkout: `npx skills add ./skills/tiktok-image`. Installed
@@ -23,11 +23,8 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 
 | Skill | What it does | Required env |
 |---|---|---|
-| [`tiktok-idea`](tiktok-idea/SKILL.md) | Invent a one-line TikTok image idea | `TOKENROUTER_API_KEY` |
 | [`tiktok-caption`](tiktok-caption/SKILL.md) | Write `{caption, description}` for a concept | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image, optionally upload to ImageKit + log to Airtable | `TOKENROUTER_API_KEY` (`IMAGEKIT_PRIVATE_KEY` for `--upload`/`--airtable`, `AIRTABLE_*` for `--airtable`) |
-| [`imagekit-upload`](imagekit-upload/SKILL.md) | Upload local images → public ImageKit URLs | `IMAGEKIT_PRIVATE_KEY` |
-| [`airtable-log`](airtable-log/SKILL.md) | Write one post record to Airtable | `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
 
 The skills are independent: install only the capabilities you need.
 
@@ -63,5 +60,4 @@ regenerate the copies (and re-apply the PEP 723 headers) with:
 bash skills/sync.sh
 ```
 
-`SKILL.md`, this README, and `refs/PROFILE_SCHEMA.md` are hand-maintained and are not
-touched by `sync.sh`.
+`SKILL.md` and this README are hand-maintained and are not touched by `sync.sh`.

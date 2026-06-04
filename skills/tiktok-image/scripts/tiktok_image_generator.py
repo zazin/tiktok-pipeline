@@ -540,12 +540,15 @@ def _cli() -> int:
     parser.add_argument(
         "--ref",
         dest="ref",
+        action="append",
         default=None,
         metavar="PATH_OR_URL",
         help=(
             "Reference image to include in the output. Local file path or "
             "http(s) URL. Can be a face, a product, a logo, an object — "
-            "any subject. The model receives it as a multi-modal input."
+            "any subject. The model receives it as a multi-modal input. "
+            "Repeat --ref to pass several images of the same subject (e.g. "
+            "multi-angle avatar faces) for stronger identity preservation."
         ),
     )
     parser.add_argument(

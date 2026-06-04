@@ -64,8 +64,6 @@ A local `.env` is loaded automatically: every module's `_cli()` calls `env_loade
 
 **Reference images have two intents.** `--ref-kind preserve` (default) keeps the subject visually identical (faces, branded products); `feature` places the subject into a new scene. These map to two different prompt templates (`REF_PRESERVE_PROMPT_TEMPLATE` / `REF_FEATURE_PROMPT_TEMPLATE`). References are downscaled to `MAX_REF_IMAGE_DIM` (1024) and re-encoded JPEG q90 before sending.
 
-**Errors are funneled through module-specific exceptions** (`ImageGenError`, `ImageKitError`); CLIs catch these and return non-zero. `upload_images` (batch) deliberately does NOT raise — it collects per-file `{"status": "success"|"failed"}` so one bad file doesn't abort the batch.
+**Errors are funneled through module-specific exceptions** (`ImageGenError`, `ImageKitError`, `IdeaError`, `PhonePushError`); CLIs catch these and return non-zero. `upload_images` (batch) and the pipeline's two delivery steps deliberately do NOT raise — they collect per-target `{"status": "success"|"failed"}` so one failure doesn't abort the rest.
 
-## Stale docs warning
-
-`TIKTOK_SETUP.md` and `TIKTOK_WORKFLOW_COMPLETE.md` describe an older batch-generator (`test_tiktok_generator.py`, metadata.tsv, Anthropic caption generation, "Sasha Bytes" overlay) that does NOT exist in this repo. Treat README.md as the source of truth; ignore those two files unless explicitly working on that legacy flow.
+**The pipeline isolates delivery failures.** `run_pipeline` (`tiktok_pipeline.py`) treats the idea and image-generation steps as fatal, but wraps each delivery target (phone, ImageKit) in its own try/except. It returns a result dict with per-target status and only exits non-zero if *every requested* delivery target failed.

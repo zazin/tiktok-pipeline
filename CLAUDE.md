@@ -52,7 +52,7 @@ Read from env (or a `.env` file — note `.env` is gitignored and holds live sec
 - `IMAGEKIT_PRIVATE_KEY` — uploader (ImageKit Basic auth: private key as username, empty password)
 - `IMAGEKIT_PUBLIC_KEY` — uploader
 
-`.env` loading is NOT automatic in code — export the vars or `source .env` yourself before running. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
+A local `.env` is loaded automatically: every module's `_cli()` calls `env_loader.load_env()` (a zero-dependency loader in `env_loader.py`) before parsing args, so you don't need to `source .env`. Real environment variables take precedence over `.env` values (`override=False`); the loader looks for `.env` next to the module first, then the cwd. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
 
 ## Architecture notes that aren't obvious from a single file
 

@@ -11,6 +11,7 @@ Generate TikTok-ready 9:16 images with AI, then deliver them to your Android pho
 | `tiktok_image_generator.py` | Generate 9:16 images via TokenRouter API |
 | `phone_uploader.py` | Push images to an Android phone over USB (adb) |
 | `imagekit_uploader.py` | Upload generated images to ImageKit CDN |
+| `env_loader.py` | Zero-dependency `.env` loader used by every CLI |
 | `tiktok_output/` | Folder where all generated images are stored |
 | `pyproject.toml` / `uv.lock` | uv project definition, console scripts, pinned deps |
 
@@ -22,11 +23,12 @@ This project uses [uv](https://docs.astral.sh/uv/) as its package manager.
 # 1. Install deps (creates .venv from pyproject.toml + uv.lock)
 uv sync
 
-# 2. Set up env
-export TOKENROUTER_API_KEY="your_key"     # idea + image generation
-export IMAGEKIT_PRIVATE_KEY="your_key"    # ImageKit upload
-export IMAGEKIT_PUBLIC_KEY="your_key"
-export IMAGEKIT_URL_ENDPOINT="https://ik.imagekit.io/your_id"
+# 2. Set up env — create a .env file (auto-loaded by every command):
+#   TOKENROUTER_API_KEY=your_key      # idea + image generation
+#   IMAGEKIT_PRIVATE_KEY=your_key     # ImageKit upload
+#   IMAGEKIT_PUBLIC_KEY=your_key
+#   IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_id
+# (or just export them — real env vars take precedence over .env)
 
 # 3. Fully automatic: AI idea → image → phone + ImageKit
 uv run tiktok-pipeline

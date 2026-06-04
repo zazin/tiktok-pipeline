@@ -455,6 +455,9 @@ def generate_image(
 
 
 def _cli() -> int:
+    from env_loader import load_env
+    load_env()
+
     parser = argparse.ArgumentParser(
         description="Generate a TikTok-style image from a text prompt via TokenRouter."
     )

@@ -146,6 +146,9 @@ def generate_idea(
 
 
 def _cli() -> int:
+    from env_loader import load_env
+    load_env()
+
     parser = argparse.ArgumentParser(
         description="Generate a single TikTok image idea via Claude on TokenRouter."
     )

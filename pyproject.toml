@@ -30,4 +30,5 @@ include = [
     "idea_generator.py",
     "imagekit_uploader.py",
     "phone_uploader.py",
+    "env_loader.py",
 ]

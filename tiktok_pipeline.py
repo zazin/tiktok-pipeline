@@ -149,6 +149,9 @@ def run_pipeline(
 
 
 def _cli() -> int:
+    from env_loader import load_env
+    load_env()
+
     parser = argparse.ArgumentParser(
         description="Auto-generate a TikTok image and deliver it to phone + ImageKit."
     )

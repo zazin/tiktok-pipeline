@@ -163,6 +163,9 @@ def upload_images(
 
 
 def _cli() -> int:
+    from env_loader import load_env
+    load_env()
+
     parser = argparse.ArgumentParser(
         description="Upload image(s) to ImageKit as public files."
     )

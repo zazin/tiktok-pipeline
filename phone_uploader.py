@@ -156,6 +156,9 @@ def push_to_phone(
 
 
 def _cli() -> int:
+    from env_loader import load_env
+    load_env()
+
     parser = argparse.ArgumentParser(
         description="Push image file(s) to an Android phone over USB (adb)."
     )

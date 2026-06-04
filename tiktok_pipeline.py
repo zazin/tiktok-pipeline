@@ -199,7 +199,7 @@ def run_pipeline(
             "Description": description_text,
             "ImageURL": ik.get("url", "") if ik["status"] == "success" else "",
             "ImageKitFileId": ik.get("file_id", "") if ik["status"] == "success" else "",
-            "ImagePath": str(path),
+            "ImagePath": path.name,  # filename + ext only, e.g. tiktok_20260604_230055.jpeg
             "Profile": profile or "",
             "Status": "pending",
         }

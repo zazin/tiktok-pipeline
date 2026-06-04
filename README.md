@@ -149,7 +149,7 @@ only (the Airtable Meta API cannot delete, rename, or retype a field; do those i
 | `Description` | Long text | AI description |
 | `ImageURL` | URL | ImageKit public URL |
 | `ImageKitFileId` | Single line text | ImageKit file id |
-| `ImagePath` | Single line text | local image path |
+| `ImagePath` | Single line text | image filename incl. ext |
 | `Profile` | Single line text | profile name (if `--profile`) |
 | `Status` | Single select (`pending` / `posted` / `failed`) | `pending` |
 | `CreatedAt` | Created time | auto (Airtable) |

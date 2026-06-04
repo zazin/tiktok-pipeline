@@ -151,7 +151,7 @@ def _cli() -> int:
     parser.add_argument("--description", default=None, help="Description text")
     parser.add_argument("--image-url", default=None, help="Public ImageKit URL")
     parser.add_argument("--file-id", default=None, help="ImageKit file id")
-    parser.add_argument("--image-path", default=None, help="Local image path")
+    parser.add_argument("--image-path", default=None, help="Image filename incl. ext (e.g. tiktok_20260604_230055.jpeg)")
     parser.add_argument("--profile", default=None, help="Profile name")
     parser.add_argument("--status", default="pending", help="Status (default: pending)")
     parser.add_argument("--json", action="store_true", help="Print the full record JSON")

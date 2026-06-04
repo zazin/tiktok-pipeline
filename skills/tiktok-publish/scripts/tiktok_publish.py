@@ -4,12 +4,13 @@
 # dependencies = ["requests>=2.31"]
 # ///
 """
-TikTok upload step: ImageKit upload + Airtable record.
+TikTok publish step: ImageKit upload + Airtable record.
 
 Takes a local image, uploads it to ImageKit (returning a public CDN URL), then
-writes one Posts record to Airtable so the downstream tiktok-agent can pick it
-up. This is the publish/log step that pairs with tiktok_image_generator.py
-(which only generates the image now).
+writes one Status=pending Posts record to Airtable. The downstream tiktok-agent
+reads pending rows and does the actual TikTok posting — so this is the "publish
+to TikTok" step from this repo's side. Pairs with tiktok_image_generator.py
+(which only generates the local image now).
 
 Credentials are read from the environment (or a local .env):
   - IMAGEKIT_PRIVATE_KEY                                       (ImageKit upload)
@@ -18,12 +19,12 @@ Credentials are read from the environment (or a local .env):
 The Airtable Posts table must already exist (create it with airtable_migrate.py).
 
 Usage (CLI):
-    python tiktok_upload.py ./tiktok_output/x.png --idea "a cat in red boots" \
+    python tiktok_publish.py ./tiktok_output/x.png --idea "a cat in red boots" \
         --caption "..." --status pending
-    python tiktok_upload.py ./x.png --no-airtable        # upload only
+    python tiktok_publish.py ./x.png --no-airtable        # upload only
 
 Usage (as a module):
-    from tiktok_upload import upload_and_log
+    from tiktok_publish import upload_and_log
 
     result = upload_and_log("x.png", idea="...", caption="...")
     print(result["imagekit"]["url"], result["airtable"]["id"])

@@ -9,7 +9,7 @@ Renders a vertical 9:16 image from a text prompt, saving a PNG under
 `tiktok_output/` (auto-named `tiktok_YYYYMMDD_HHMMSS.png`) or a path you choose.
 Pillow guarantees the final 1080x1920 size (center-crop, letterbox, or none). This
 skill only generates the image — to publish it, pass the saved file to the
-`tiktok-upload` skill (ImageKit upload + Airtable record).
+`tiktok-publish` skill (ImageKit upload + Airtable record).
 
 ## Requirements
 
@@ -64,7 +64,7 @@ URLs instead of local files — handy when the same avatar is reused across runs
 
 ## Output & errors
 
-Prints `Saved: <path>` — the local PNG path. Hand that path to the `tiktok-upload`
+Prints `Saved: <path>` — the local PNG path. Hand that path to the `tiktok-publish`
 skill to publish it. Reference images only work with reference-capable models (the
 default model is one); they are downscaled to 1024px JPEG before sending, so source
 resolution doesn't change cost. Refusals (common when editing real faces) are retried

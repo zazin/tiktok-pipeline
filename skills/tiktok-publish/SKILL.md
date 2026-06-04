@@ -1,14 +1,15 @@
 ---
-name: tiktok-upload
-description: Upload a local image to ImageKit (public CDN URL) and write one Posts record to Airtable in a single step — the publish/log step after generating an image. Use when an agent has an image file ready and needs it hosted and recorded for the downstream poster. Requires IMAGEKIT_PRIVATE_KEY and (unless --no-airtable) AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME.
+name: tiktok-publish
+description: Publish a finished image to TikTok by uploading it to ImageKit (public CDN URL) and writing one Status=pending Posts record to Airtable; the downstream tiktok-agent reads pending rows and does the actual posting. Use when an agent has an image file ready and wants it queued for TikTok. Requires IMAGEKIT_PRIVATE_KEY and (unless --no-airtable) AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME.
 ---
 
-# TikTok Upload (ImageKit + Airtable)
+# TikTok Publish (ImageKit + Airtable)
 
 Takes a local image, uploads it to ImageKit, then writes one `Posts` record to
 Airtable (idea, caption, description, the ImageKit URL + fileId, the image
-filename, profile, status). This is the publish/log step that pairs with the
-`tiktok-image` skill (which only generates the image now).
+filename, profile, status — `Status=pending` by default). That record is what gets
+the post onto TikTok: the downstream tiktok-agent reads `pending` rows and posts
+them. Pairs with the `tiktok-image` skill (which only generates the local image).
 
 ## Requirements
 
@@ -25,13 +26,13 @@ filename, profile, status). This is the publish/log step that pairs with the
 
 ```bash
 # upload + write a pending Posts record
-uv run scripts/tiktok_upload.py ./tiktok_output/x.png --idea "a cat in red boots" --caption "morning vibes"
+uv run scripts/tiktok_publish.py ./tiktok_output/x.png --idea "a cat in red boots" --caption "morning vibes"
 
 # upload only, no Airtable record
-uv run scripts/tiktok_upload.py ./x.png --no-airtable --folder /tiktok
+uv run scripts/tiktok_publish.py ./x.png --no-airtable --folder /tiktok
 ```
 
-Without `uv`: `pip install requests` then `python3 scripts/tiktok_upload.py ...`.
+Without `uv`: `pip install requests` then `python3 scripts/tiktok_publish.py ...`.
 
 ## Flags
 

@@ -4,17 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A two-stage CLI pipeline that turns a text prompt into a TikTok-ready 9:16 image and publishes it to a CDN:
+A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image and delivers it to two targets. `tiktok_pipeline.py` is the top-level orchestrator; the other modules are independent, individually-runnable stages it chains together via lazy imports:
 
-1. `tiktok_image_generator.py` — prompt → TokenRouter image model → 9:16 PNG saved to disk
-2. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
+1. `idea_generator.py` — (optional) theme → Claude on TokenRouter → one-line image idea
+2. `tiktok_image_generator.py` — prompt → TokenRouter image model → 9:16 PNG in `tiktok_output/`
+3. `phone_uploader.py` — local image → Android phone over USB (adb push)
+4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
 
-The two stages are independent modules but the generator can chain into the uploader via `--upload` (it imports `upload_image` lazily inside the CLI handler).
+`tiktok_pipeline.py` runs idea → generate → (phone AND imagekit). The two delivery targets are independent and non-fatal: a failure in one is recorded and reported but does not abort the other or the run. `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
+
+All generated images land in one folder (`tiktok_output/`, override with `--output-dir`). The folder is committed via `tiktok_output/.gitkeep`; its image contents are gitignored.
 
 ## Commands
 
 ```bash
-pip install requests pillow            # only third-party runtime deps
+pip install requests pillow            # only third-party runtime deps; adb for phone delivery
+
+# Fully automatic: AI idea -> image -> phone + ImageKit
+python tiktok_pipeline.py --theme "cyberpunk street food"
+
+# Own prompt, ImageKit only (no phone)
+python tiktok_pipeline.py --prompt "neon skyline" --no-phone
 
 # Generate (auto-named PNG under tiktok_output/)
 python tiktok_image_generator.py "a cat smiling wearing red boots"
@@ -36,11 +46,11 @@ There is no test suite, linter config, or build step in this repo.
 
 Read from env (or a `.env` file — note `.env` is gitignored and holds live secrets):
 
-- `TOKENROUTER_API_KEY` — generator
+- `TOKENROUTER_API_KEY` — **both** the idea step and image generation (idea uses an Anthropic model served through TokenRouter's OpenAI-compatible endpoint, so there is NO separate `ANTHROPIC_API_KEY` and no `anthropic` SDK dependency)
 - `IMAGEKIT_PRIVATE_KEY` — uploader (ImageKit Basic auth: private key as username, empty password)
 - `IMAGEKIT_PUBLIC_KEY` — uploader
 
-`.env` loading is NOT automatic in code — export the vars or `source .env` yourself before running.
+`.env` loading is NOT automatic in code — export the vars or `source .env` yourself before running. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
 
 ## Architecture notes that aren't obvious from a single file
 

@@ -1,1 +1,5 @@
 .env
+
+# Generated images — keep the folder, ignore its contents
+tiktok_output/*
+!tiktok_output/.gitkeep

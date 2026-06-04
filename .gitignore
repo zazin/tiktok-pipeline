@@ -6,3 +6,7 @@ __pycache__/
 # Generated images — keep the folder, ignore its contents
 tiktok_output/*
 !tiktok_output/.gitkeep
+
+# Stray artifacts from running `npx skills add` inside this repo by mistake
+/.claude/
+/skills-lock.json

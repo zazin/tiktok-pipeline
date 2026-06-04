@@ -1,6 +1,6 @@
 # TikTok pipeline — Agent Skills
 
-The stages of this repo's TikTok content pipeline, repackaged as standalone
+The individual stages of this repo's TikTok content pipeline, repackaged as standalone
 [Agent Skills](https://agentskills.io) so other AI agents can install and run them.
 Each skill is a self-contained folder (`SKILL.md` + a `scripts/` bundle that includes
 every module it imports), so a skill works on its own without the rest of the repo.
@@ -11,8 +11,8 @@ With the [`npx skills`](https://github.com/vercel-labs/skills) tool, from this r
 (`<owner>/<repo>` = your GitHub `owner/repo`):
 
 ```bash
-npx skills add <owner>/tiktok-pipeline/skills/tiktok-pipeline   # the full orchestrator
-npx skills add <owner>/tiktok-pipeline/skills/tiktok-image      # just one capability
+npx skills add <owner>/tiktok-pipeline/skills/tiktok-image      # one capability
+npx skills add <owner>/tiktok-pipeline/skills/tiktok-idea       # another
 ```
 
 Or install from a local checkout: `npx skills add ./skills/tiktok-image`. Installed
@@ -23,7 +23,6 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 
 | Skill | What it does | Required env |
 |---|---|---|
-| [`tiktok-pipeline`](tiktok-pipeline/SKILL.md) | Full flow: idea → caption → image → ImageKit → Airtable | `TOKENROUTER_API_KEY`, `IMAGEKIT_PRIVATE_KEY`, `AIRTABLE_*` |
 | [`tiktok-idea`](tiktok-idea/SKILL.md) | Invent a one-line TikTok image idea | `TOKENROUTER_API_KEY` |
 | [`tiktok-caption`](tiktok-caption/SKILL.md) | Write `{caption, description}` for a concept | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image (+ optional upload) | `TOKENROUTER_API_KEY` (`IMAGEKIT_PRIVATE_KEY` if `--upload`) |
@@ -32,8 +31,7 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 | [`airtable-migrate`](airtable-migrate/SKILL.md) | Create/extend the Airtable Posts schema (run once) | `AIRTABLE_API_KEY` (schema scopes), `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
 | [`tiktok-profile`](tiktok-profile/SKILL.md) | Load a recurring-character profile | _(none)_ |
 
-The skills are independent: install only what you need, or `tiktok-pipeline` for the
-whole flow.
+The skills are independent: install only the capabilities you need.
 
 ## Runtime
 

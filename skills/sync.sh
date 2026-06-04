@@ -70,6 +70,5 @@ build imagekit-upload  imagekit_uploader      "imagekit_uploader env_loader"    
 build airtable-log     airtable_logger        "airtable_logger env_loader"                                                                                '"requests>=2.31"'
 build airtable-migrate airtable_migrate       "airtable_migrate airtable_logger env_loader"                                                               '"requests>=2.31"'
 build tiktok-profile   profile_loader         "profile_loader env_loader"                                                                                 ""
-build tiktok-pipeline  tiktok_pipeline        "tiktok_pipeline tiktok_image_generator idea_generator caption_generator profile_loader imagekit_uploader airtable_logger env_loader" '"pillow>=10.0", "requests>=2.31"'
 
 echo "Done. (SKILL.md / README.md are hand-maintained and not touched by this script.)"

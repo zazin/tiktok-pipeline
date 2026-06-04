@@ -157,12 +157,12 @@ only (the Airtable Meta API cannot delete, rename, or retype a field; do those i
 ## Skills (for other agents)
 
 Each pipeline stage is also packaged as a standalone [Agent Skill](https://agentskills.io)
-under [`skills/`](skills/), so other AI agents can install and run a single capability —
-or the whole pipeline — with [`npx skills`](https://github.com/vercel-labs/skills):
+under [`skills/`](skills/), so other AI agents can install and run a single capability
+with [`npx skills`](https://github.com/vercel-labs/skills):
 
 ```bash
-npx skills add zazin/tiktok-pipeline/skills/tiktok-pipeline   # full orchestrator
 npx skills add zazin/tiktok-pipeline/skills/tiktok-image      # one capability
+npx skills add zazin/tiktok-pipeline/skills/tiktok-idea       # another
 ```
 
 The `scripts/` bundle inside each skill is **generated** from the root modules (the

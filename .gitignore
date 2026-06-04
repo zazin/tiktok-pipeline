@@ -1,4 +1,6 @@
 .env
+__pycache__/
+*.pyc
 
 # Generated images — keep the folder, ignore its contents
 tiktok_output/*

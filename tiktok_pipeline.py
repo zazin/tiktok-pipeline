@@ -5,7 +5,7 @@ TikTok image pipeline — the top-level "app".
 Runs the whole flow end to end:
 
     1. AI invents a TikTok image idea         (idea_generator.generate_idea)
-    2. Write a matching caption + description  (caption_generator.generate_caption)
+    2. Write a matching caption + description  (content_generator.generate_content)
     3. Generate a 9:16 image from that idea    (tiktok_image_generator.generate_image)
     4. Upload the image to ImageKit CDN        (imagekit_uploader.upload_image)
     5. Store the post record in Airtable       (airtable_logger.create_record)
@@ -131,12 +131,12 @@ def run_pipeline(
     description_text = ""
     if caption:
         try:
-            from caption_generator import generate_caption, DEFAULT_MODEL as CAP_MODEL
-            cap = generate_caption(idea, persona=persona, model=caption_model or CAP_MODEL)
+            from content_generator import generate_content, DEFAULT_MODEL as CAP_MODEL
+            cap = generate_content(idea, persona=persona, model=caption_model or CAP_MODEL)
             caption_text = cap.get("caption", "")
             description_text = cap.get("description", "")
             print(f"Caption: {caption_text}")
-        except Exception as e:  # CaptionError or import error
+        except Exception as e:  # ContentError or import error
             print(f"Caption: FAILED — {e}", file=sys.stderr)
 
     # --- 2. Generate -----------------------------------------------------

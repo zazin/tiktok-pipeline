@@ -14,7 +14,7 @@ tiktok-pipeline = "tiktok_pipeline:_cli"
 tiktok-generate = "tiktok_image_generator:_cli"
 tiktok-publish = "tiktok_publish:_cli"
 tiktok-idea = "idea_generator:_cli"
-tiktok-caption = "caption_generator:_cli"
+tiktok-content = "content_generator:_cli"
 tiktok-profile = "profile_loader:_cli"
 imagekit-upload = "imagekit_uploader:_cli"
 airtable-log = "airtable_logger:_cli"
@@ -33,7 +33,7 @@ include = [
     "tiktok_image_generator.py",
     "tiktok_publish.py",
     "idea_generator.py",
-    "caption_generator.py",
+    "content_generator.py",
     "profile_loader.py",
     "imagekit_uploader.py",
     "airtable_logger.py",

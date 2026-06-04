@@ -10,7 +10,7 @@ The pipeline has exactly two outputs: **the image on ImageKit** and **a post rec
 |------|---------|
 | `tiktok_pipeline.py` | **Top-level app** — AI idea → image → ImageKit → Airtable |
 | `idea_generator.py` | Invent a TikTok image idea via Claude (on TokenRouter) |
-| `caption_generator.py` | Generate a TikTok caption + description (text-only AI call) |
+| `content_generator.py` | Generate a TikTok post's image prompt + caption + description + hashtags (text-only AI call) |
 | `profile_loader.py` | Load a `profiles/<name>/` persona + reference images |
 | `profiles/<name>/` | A persona (`profile.json`) + reference photos of one person |
 | `tiktok_image_generator.py` | Generate 9:16 images via TokenRouter API |
@@ -102,7 +102,7 @@ uv run airtable-migrate
 uv run tiktok-idea --theme "cozy coffee shop"
 
 # Just generate a caption + description for a concept
-uv run tiktok-caption "a jade-green matcha latte on white marble"
+uv run tiktok-content "a jade-green matcha latte on white marble"
 
 # List / inspect profiles
 uv run tiktok-profile --list
@@ -162,7 +162,7 @@ with [`npx skills`](https://github.com/vercel-labs/skills):
 
 ```bash
 npx skills add zazin/tiktok-pipeline/skills/tiktok-image      # one capability
-npx skills add zazin/tiktok-pipeline/skills/tiktok-caption    # another
+npx skills add zazin/tiktok-pipeline/skills/tiktok-content    # another
 ```
 
 The `scripts/` bundle inside each skill is **generated** from the root modules (the

@@ -63,7 +63,7 @@ build() {
 
 echo "Regenerating skill script bundles from $ROOT ..."
 
-build tiktok-caption   caption_generator      "caption_generator env_loader"                                                                              ""
+build tiktok-content   content_generator      "content_generator env_loader"                                                                              ""
 build tiktok-image     tiktok_image_generator "tiktok_image_generator env_loader"                                                                          '"pillow>=10.0"'
 build tiktok-publish   tiktok_publish         "tiktok_publish imagekit_uploader airtable_logger env_loader"                                                '"requests>=2.31"'
 

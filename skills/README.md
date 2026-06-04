@@ -12,7 +12,7 @@ With the [`npx skills`](https://github.com/vercel-labs/skills) tool, from this r
 
 ```bash
 npx skills add <owner>/tiktok-pipeline/skills/tiktok-image      # one capability
-npx skills add <owner>/tiktok-pipeline/skills/tiktok-caption    # another
+npx skills add <owner>/tiktok-pipeline/skills/tiktok-content    # another
 ```
 
 Or install from a local checkout: `npx skills add ./skills/tiktok-image`. Installed
@@ -23,12 +23,13 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 
 | Skill | What it does | Required env |
 |---|---|---|
-| [`tiktok-caption`](tiktok-caption/SKILL.md) | Write `{caption, description}` for a concept | `TOKENROUTER_API_KEY` |
+| [`tiktok-content`](tiktok-content/SKILL.md) | From a topic → `{image_prompt, caption, description, hashtags}` | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image to a local PNG (multi-angle `--ref`) | `TOKENROUTER_API_KEY` |
 | [`tiktok-publish`](tiktok-publish/SKILL.md) | Publish an image to TikTok: upload to ImageKit + queue a pending Posts record in Airtable | `IMAGEKIT_PRIVATE_KEY`, `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
 
 The skills are independent: install only the capabilities you need. A common chain
-is `tiktok-image` (generate a PNG) → `tiktok-publish` (upload + queue it for TikTok).
+is `tiktok-content` (image prompt + caption + hashtags) → `tiktok-image` (render the
+PNG from that prompt) → `tiktok-publish` (upload + queue it for TikTok).
 
 ## Runtime
 

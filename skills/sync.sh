@@ -65,7 +65,7 @@ echo "Regenerating skill script bundles from $ROOT ..."
 
 build tiktok-idea      idea_generator         "idea_generator profile_loader env_loader"                                                                  ""
 build tiktok-caption   caption_generator      "caption_generator env_loader"                                                                              ""
-build tiktok-image     tiktok_image_generator "tiktok_image_generator imagekit_uploader env_loader"                                                       '"pillow>=10.0", "requests>=2.31"'
+build tiktok-image     tiktok_image_generator "tiktok_image_generator imagekit_uploader airtable_logger env_loader"                                       '"pillow>=10.0", "requests>=2.31"'
 build imagekit-upload  imagekit_uploader      "imagekit_uploader env_loader"                                                                              '"requests>=2.31"'
 build airtable-log     airtable_logger        "airtable_logger env_loader"                                                                                '"requests>=2.31"'
 build tiktok-profile   profile_loader         "profile_loader env_loader"                                                                                 ""

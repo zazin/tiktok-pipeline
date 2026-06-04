@@ -524,6 +524,16 @@ def _cli() -> int:
     parser.add_argument("--upload", action="store_true", help="Also upload the result to ImageKit and print the public URL")
     parser.add_argument("--folder", default="/tiktok", help="ImageKit folder (used with --upload, default: /tiktok)")
     parser.add_argument(
+        "--airtable",
+        action="store_true",
+        help="Also write a Posts record to Airtable (implies --upload, since the record stores the ImageKit URL)",
+    )
+    parser.add_argument("--idea", default=None, help="Airtable Idea field (defaults to the prompt)")
+    parser.add_argument("--caption", default=None, help="Airtable Caption field")
+    parser.add_argument("--description", default=None, help="Airtable Description field")
+    parser.add_argument("--profile", default=None, help="Airtable Profile field")
+    parser.add_argument("--status", default="pending", help="Airtable Status field (default: pending)")
+    parser.add_argument(
         "--ref",
         dest="ref",
         default=None,
@@ -568,17 +578,43 @@ def _cli() -> int:
 
     print(f"Saved: {path}")
 
-    if args.upload:
+    # --airtable needs the ImageKit URL, so it implies an upload.
+    upload_result = None
+    if args.upload or args.airtable:
         try:
             from imagekit_uploader import upload_image, ImageKitError
         except ImportError as e:
             print(f"Cannot import imagekit_uploader: {e}", file=sys.stderr)
             return 1
         try:
-            result = upload_image(str(path), folder=args.folder)
-            print(f"Public URL: {result['url']}")
+            upload_result = upload_image(str(path), folder=args.folder)
+            print(f"Public URL: {upload_result['url']}")
         except ImageKitError as e:
             print(f"Upload error: {e}", file=sys.stderr)
+            return 1
+
+    if args.airtable:
+        try:
+            from airtable_logger import create_record, AirtableError
+        except ImportError as e:
+            print(f"Cannot import airtable_logger: {e}", file=sys.stderr)
+            return 1
+        field_map = {
+            "Idea": args.idea or args.prompt,
+            "Caption": args.caption,
+            "Description": args.description,
+            "ImageURL": upload_result["url"] if upload_result else None,
+            "ImageKitFileId": upload_result.get("fileId") if upload_result else None,
+            "ImagePath": path.name,
+            "Profile": args.profile,
+            "Status": args.status,
+        }
+        fields = {k: v for k, v in field_map.items() if v is not None}
+        try:
+            rec = create_record(fields)
+            print(f"Airtable record: {rec['id']}")
+        except AirtableError as e:
+            print(f"Airtable error: {e}", file=sys.stderr)
             return 1
 
     return 0

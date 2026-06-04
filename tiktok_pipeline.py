@@ -60,6 +60,7 @@ def run_pipeline(
     height: Optional[int] = None,
     reference_image: Optional[str] = None,
     reference_kind: str = "preserve",
+    image_retries: int = 2,
     profile: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     to_phone: bool = True,
@@ -135,6 +136,7 @@ def run_pipeline(
         "resize": resize,
         "reference_image": reference_image,
         "reference_kind": reference_kind,
+        "retries": image_retries,
     }
     if width:
         gen_kwargs["width"] = width
@@ -212,6 +214,7 @@ def _cli() -> int:
     parser.add_argument("--height", type=int, default=None, help="Target height (default: generator's 1920)")
     parser.add_argument("--ref", dest="ref", default=None, metavar="PATH_OR_URL", help="Reference image (face/product/logo) to include")
     parser.add_argument("--ref-kind", dest="ref_kind", choices=["preserve", "feature"], default="preserve", help="How the reference appears (default: preserve)")
+    parser.add_argument("--retries", type=int, default=2, help="Extra image attempts on a model refusal / no-image response (default: 2)")
     parser.add_argument("--profile", default=None, help="Profile name (profiles/<name>/): uses its persona + reference images")
     parser.add_argument("--profiles-dir", default=None, help="Profiles root folder (default: profiles/)")
     # Delivery: phone
@@ -238,6 +241,7 @@ def _cli() -> int:
             height=args.height,
             reference_image=args.ref,
             reference_kind=args.ref_kind,
+            image_retries=args.retries,
             profile=args.profile,
             profiles_dir=args.profiles_dir,
             to_phone=not args.no_phone,

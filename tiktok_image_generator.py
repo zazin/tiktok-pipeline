@@ -87,6 +87,15 @@ class ImageGenError(Exception):
     """Raised when image generation fails."""
 
 
+class ImageRefusal(ImageGenError):
+    """
+    Raised when the model returned no usable image for an attempt — either an
+    explicit refusal or an empty/imageless response. These are often transient
+    (especially for reference-image edits of real faces), so generate_image
+    retries on them.
+    """
+
+
 def _get_api_key() -> str:
     key = os.getenv("TOKENROUTER_API_KEY")
     if not key:
@@ -147,7 +156,12 @@ def _extract_data_url(response: dict) -> str:
                 if url:
                     return url
 
-    raise ImageGenError(
+    # No image. If the model explicitly refused, surface that reason; either way
+    # this is treated as a (often transient) refusal that generate_image retries.
+    refusal = msg.get("refusal")
+    if refusal:
+        raise ImageRefusal(f"Model refused to generate the image: {refusal}")
+    raise ImageRefusal(
         "No image found in response. "
         f"message keys={list(msg.keys())}, content type={type(content).__name__}"
     )
@@ -355,6 +369,8 @@ def generate_image(
     height: int = TIKTOK_HEIGHT,
     reference_image: Optional[str | os.PathLike] = None,
     reference_kind: RefKind = "preserve",
+    retries: int = 2,
+    retry_delay: float = 2.0,
 ) -> Path:
     """
     Generate an image from a text prompt and save it to disk.
@@ -377,6 +393,9 @@ def generate_image(
               * reference_kind="feature": the subject is placed into a new
                 scene (allowed to be scaled/repositioned).
         reference_kind: See above. Ignored if reference_image is None.
+        retries: Number of extra attempts if the model returns no image /
+            refuses (total attempts = retries + 1). Default 2.
+        retry_delay: Seconds to wait between retry attempts.
 
     Returns:
         Path to the saved image file.
@@ -426,35 +445,46 @@ def generate_image(
         "size": f"{width}x{height}",
     }
     body = json.dumps(payload).encode()
+    headers = {
+        "Authorization": f"Bearer {_get_api_key()}",
+        "Content-Type": "application/json",
+    }
 
-    req = urllib.request.Request(
-        f"{TOKENROUTER_BASE_URL}/chat/completions",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {_get_api_key()}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    # Send + extract, retrying on refusals / imageless responses (these are
+    # often transient, especially for reference-image edits of real faces).
+    data_url = None
+    attempts = max(1, retries + 1)
+    for attempt in range(1, attempts + 1):
+        req = urllib.request.Request(
+            f"{TOKENROUTER_BASE_URL}/chat/completions",
+            data=body,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                resp_bytes = r.read()
+            response = json.loads(resp_bytes)
+            if "error" in response:
+                raise ImageGenError(f"API error: {response['error']}")
+            data_url = _extract_data_url(response)
+            break  # success
+        except ImageRefusal as e:
+            if attempt >= attempts:
+                raise ImageRefusal(f"{e} (after {attempts} attempt(s))") from e
+            print(
+                f"Image attempt {attempt}/{attempts} got no image ({e}); retrying...",
+                file=sys.stderr,
+            )
+            time.sleep(retry_delay)
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+            raise ImageGenError(f"HTTP {e.code} from TokenRouter: {err_body}") from e
+        except urllib.error.URLError as e:
+            raise ImageGenError(f"Network error: {e}") from e
+        except json.JSONDecodeError as e:
+            raise ImageGenError(f"Invalid JSON response: {e}") from e
 
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp_bytes = r.read()
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="replace")[:500]
-        raise ImageGenError(f"HTTP {e.code} from TokenRouter: {err_body}") from e
-    except urllib.error.URLError as e:
-        raise ImageGenError(f"Network error: {e}") from e
-
-    try:
-        response = json.loads(resp_bytes)
-    except json.JSONDecodeError as e:
-        raise ImageGenError(f"Invalid JSON response: {e}") from e
-
-    if "error" in response:
-        raise ImageGenError(f"API error: {response['error']}")
-
-    data_url = _extract_data_url(response)
     blob, ext = _decode_data_url(data_url)
 
     # Resolve output path
@@ -482,6 +512,7 @@ def _cli() -> int:
     parser.add_argument("--out", "-o", default=None, help="Output file path (default: tiktok_output/tiktok_YYYYMMDD_HHMMSS.<ext>)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"TokenRouter model ID (default: {DEFAULT_MODEL})")
     parser.add_argument("--raw-prompt", action="store_true", help="Use the prompt as-is without the TikTok style template")
+    parser.add_argument("--retries", type=int, default=2, help="Extra attempts on a model refusal / no-image response (default: 2)")
     parser.add_argument(
         "--resize",
         choices=["fit", "pad", "none"],
@@ -529,6 +560,7 @@ def _cli() -> int:
             height=args.height,
             reference_image=args.ref,
             reference_kind=args.ref_kind,
+            retries=args.retries,
         )
     except ImageGenError as e:
         print(f"Error: {e}", file=sys.stderr)

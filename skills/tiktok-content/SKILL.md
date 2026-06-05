@@ -8,7 +8,7 @@ description: From a topic/idea, generate the full text package for one TikTok po
 Turns a topic/idea into everything text/prompt for one post, in one call:
 
 - `image_prompt` — a vivid one-line prompt to feed the `tiktok-image` skill
-- `caption` — a scroll-stopping line with emojis (no hashtags)
+- `caption` — a scroll-stopping line with emojis (no hashtags), capped at 90 characters
 - `description` — one or two plain sentences of context
 - `hashtags` — a list of 3–7 hashtag strings
 

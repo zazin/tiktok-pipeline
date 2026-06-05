@@ -38,7 +38,7 @@ field is written as a string by the pipeline and coerced via `typecast`.
 | Field | Airtable type | Written by | Purpose / example |
 |-------|---------------|------------|-------------------|
 | `Idea` | `singleLineText` (primary) | pipeline | The one-line image idea / topic. e.g. `a cat smiling wearing red boots` |
-| `Caption` | `multilineText` | pipeline | The post caption. May contain emojis. **No hashtags.** Typically under ~150 chars. |
+| `Caption` | `multilineText` | pipeline | The post caption. May contain emojis. **No hashtags.** Capped at 90 chars. |
 | `Description` | `multilineText` | pipeline | One or two plain sentences of context. No hashtags. |
 | `ImageURL` | `url` | pipeline | Public ImageKit CDN URL of the 9:16 image. This is the image to attach when posting. e.g. `https://ik.imagekit.io/salt/tiktok/tiktok_20260604_230055.jpeg` |
 | `ImageKitFileId` | `singleLineText` | pipeline | ImageKit `fileId` for the uploaded image — use it for later lookup/delete on ImageKit. |

@@ -35,6 +35,11 @@ from typing import Optional
 TOKENROUTER_BASE_URL = "https://api.tokenrouter.com/v1"
 DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
+# Hard upper bound on caption length (characters, incl. emojis/spaces). The
+# system prompt asks the model to stay under this, and _enforce_caption_limit
+# guarantees it for any model output that ignores the instruction.
+CAPTION_MAX_CHARS = 90
+
 _SYSTEM_PROMPT = (
     "You are a TikTok content creator. Given a topic/idea, produce the complete "
     "text package for ONE vertical 9:16 image post. Respond with ONLY a JSON "
@@ -43,7 +48,7 @@ _SYSTEM_PROMPT = (
     "single 9:16 scene — subject, setting, mood, lighting. Under ~50 words. Just "
     "describe the scene, no camera jargon.\n"
     '  "caption": one scroll-stopping line for the post with 1-3 fitting emojis '
-    "and NO hashtags. Under ~150 chars.\n"
+    "and NO hashtags. MUST be at most 90 characters, including emojis and spaces.\n"
     '  "description": one or two plain sentences of context (no hashtags, no '
     "emojis).\n"
     '  "hashtags": an array of 3-7 relevant hashtag strings, each starting with '
@@ -177,6 +182,18 @@ def _normalize_hashtags(value) -> list[str]:
     return tags
 
 
+def _enforce_caption_limit(caption: str, limit: int = CAPTION_MAX_CHARS) -> str:
+    """Trim a caption to at most ``limit`` characters, preferring a word boundary."""
+    if len(caption) <= limit:
+        return caption
+    clipped = caption[:limit].rstrip()
+    spaced = clipped.rsplit(" ", 1)[0] if " " in clipped else clipped
+    # Only keep the word-boundary cut if it doesn't lose too much of the caption.
+    if len(spaced) >= limit * 0.6:
+        clipped = spaced
+    return clipped.rstrip()
+
+
 def _parse_content(text: str) -> dict:
     """Extract the JSON object from the model's reply, tolerating stray prose/fences."""
     s = text.strip()
@@ -192,7 +209,7 @@ def _parse_content(text: str) -> dict:
         raise ContentError(f"Could not parse content JSON from model output: {e}; got {text[:200]!r}")
 
     image_prompt = str(data.get("image_prompt", "")).strip()
-    caption = str(data.get("caption", "")).strip()
+    caption = _enforce_caption_limit(str(data.get("caption", "")).strip())
     description = str(data.get("description", "")).strip()
     hashtags = _normalize_hashtags(data.get("hashtags"))
     if not image_prompt:

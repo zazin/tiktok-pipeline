@@ -16,7 +16,7 @@ Credentials / target are read from environment variables:
   - AIRTABLE_API_KEY    — personal access token. For schema changes it needs the
                           scope `schema.bases:write` (plus `schema.bases:read`).
   - AIRTABLE_BASE_ID    — base id, starts with "app..."
-  - AIRTABLE_TABLE_NAME — table name to create/extend (e.g. "Posts")
+  - AIRTABLE_TABLE_NAME — table name to create/extend. Optional; defaults to "Posts".
 
 Usage (CLI):
     python airtable_migrate.py            # create/extend the table, print a summary

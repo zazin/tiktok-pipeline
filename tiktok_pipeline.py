@@ -61,6 +61,7 @@ def run_pipeline(
     idea_model: Optional[str] = None,
     caption: bool = True,
     caption_model: Optional[str] = None,
+    language: str = "id",
     output: Optional[str] = None,
     output_dir: str = "tiktok_output",
     resize: str = "fit",
@@ -132,7 +133,7 @@ def run_pipeline(
     if caption:
         try:
             from content_generator import generate_content, DEFAULT_MODEL as CAP_MODEL
-            cap = generate_content(idea, persona=persona, model=caption_model or CAP_MODEL)
+            cap = generate_content(idea, persona=persona, language=language, model=caption_model or CAP_MODEL)
             caption_text = cap.get("caption", "")
             description_text = cap.get("description", "")
             print(f"Caption: {caption_text}")
@@ -224,6 +225,7 @@ def _cli() -> int:
     parser.add_argument("--idea-model", default=None, help="TokenRouter Anthropic model for idea generation (default: anthropic/claude-haiku-4.5)")
     parser.add_argument("--no-caption", action="store_true", help="Skip AI caption/description generation")
     parser.add_argument("--caption-model", default=None, help="TokenRouter Anthropic model for caption generation (default: anthropic/claude-haiku-4.5)")
+    parser.add_argument("--language", "--lang", dest="language", choices=["id", "en"], default="id", help="Post-copy language: id (default) or en")
     parser.add_argument("--out", "-o", default=None, help="Exact output image path (overrides --output-dir auto-naming)")
     parser.add_argument("--output-dir", default="tiktok_output", help="Folder to store generated images (default: tiktok_output/)")
     parser.add_argument("--resize", choices=["fit", "pad", "none"], default="fit", help="Resize strategy (default: fit)")
@@ -250,6 +252,7 @@ def _cli() -> int:
             idea_model=args.idea_model,
             caption=not args.no_caption,
             caption_model=args.caption_model,
+            language=args.language,
             output=args.out,
             output_dir=args.output_dir,
             resize=args.resize,

@@ -40,6 +40,11 @@ DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 # guarantees it for any model output that ignores the instruction.
 CAPTION_MAX_CHARS = 90
 
+# Supported post-copy languages. Only the caption/description/hashtags are written
+# in the chosen language — image_prompt always stays English for the image model.
+LANGUAGES = ("id", "en")
+DEFAULT_LANGUAGE = "id"
+
 _SYSTEM_PROMPT = (
     "You are a TikTok content creator. Given a topic/idea, produce the complete "
     "text package for ONE vertical 9:16 image post. Respond with ONLY a JSON "
@@ -52,9 +57,22 @@ _SYSTEM_PROMPT = (
     '  "description": one or two plain sentences of context (no hashtags, no '
     "emojis).\n"
     '  "hashtags": an array of 3-7 relevant hashtag strings, each starting with '
-    '"#", no spaces.\n'
-    "Match the language to the topic; default to English."
+    '"#", no spaces.'
 )
+
+
+def _language_clause(language: str) -> str:
+    """Return the per-call instruction picking the post-copy language."""
+    if language == "en":
+        return (
+            "\nWrite the caption, description and hashtags in ENGLISH. "
+            "Keep image_prompt in English."
+        )
+    # default "id"
+    return (
+        "\nWrite the caption, description and hashtags in Indonesian "
+        "(Bahasa Indonesia), natural and casual. Keep image_prompt in English."
+    )
 
 # When a persona is supplied, identity is fixed by a reference photo at image
 # time, so the image_prompt should describe the SCENE around the person (not
@@ -85,6 +103,7 @@ def generate_content(
     topic: str,
     *,
     persona: Optional[str] = None,
+    language: str = DEFAULT_LANGUAGE,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 600,
     timeout: int = 60,
@@ -97,6 +116,8 @@ def generate_content(
         persona: Optional persona description; when set, the caption is written in
             that person's voice and the image_prompt describes the scene (not the
             face, whose identity is fixed by a reference image).
+        language: Post-copy language for caption/description/hashtags — "id"
+            (Indonesian, default) or "en" (English). image_prompt stays English.
         model: TokenRouter model ID (an Anthropic chat model).
         max_tokens: Response cap.
         timeout: HTTP timeout in seconds.
@@ -110,6 +131,8 @@ def generate_content(
     """
     if not topic or not topic.strip():
         raise ContentError("Topic must not be empty.")
+    if language not in LANGUAGES:
+        raise ContentError(f"Unsupported language {language!r}; choose one of {LANGUAGES}.")
 
     parts = []
     if persona and persona.strip():
@@ -122,7 +145,7 @@ def generate_content(
         "model": model,
         "max_tokens": max_tokens,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _SYSTEM_PROMPT + _language_clause(language)},
             {"role": "user", "content": user_msg},
         ],
     }
@@ -233,12 +256,13 @@ def _cli() -> int:
     )
     parser.add_argument("topic", help="The topic/idea the post is about")
     parser.add_argument("--persona", default=None, help="Persona description; writes the caption in their voice and keeps the image prompt scene-focused")
+    parser.add_argument("--language", "--lang", dest="language", choices=list(LANGUAGES), default=DEFAULT_LANGUAGE, help=f"Post-copy language: id (default) or en (default: {DEFAULT_LANGUAGE})")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"TokenRouter model (default: {DEFAULT_MODEL})")
     parser.add_argument("--json", action="store_true", help="Print the full JSON object")
     args = parser.parse_args()
 
     try:
-        c = generate_content(args.topic, persona=args.persona, model=args.model)
+        c = generate_content(args.topic, persona=args.persona, language=args.language, model=args.model)
     except ContentError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

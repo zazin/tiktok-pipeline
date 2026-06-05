@@ -101,8 +101,11 @@ uv run airtable-migrate
 # Just generate an idea
 uv run tiktok-idea --theme "cozy coffee shop"
 
-# Just generate a caption + description for a concept
+# Just generate a caption + description for a concept (Indonesian by default)
 uv run tiktok-content "a jade-green matcha latte on white marble"
+
+# Generate the post copy in English instead
+uv run tiktok-content "a jade-green matcha latte on white marble" --language en
 
 # List / inspect profiles
 uv run tiktok-profile --list
@@ -123,7 +126,8 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
 ## Pipeline Flow
 
 1. (optional) Theme → AI → image idea  *(skipped if you pass `--prompt`)*
-2. Idea → AI → **caption + description** (separate text-only call; `--no-caption` to skip)
+2. Idea → AI → **caption + description** (separate text-only call; `--no-caption` to skip). The
+   post copy is written in Indonesian by default; pass `--language en` for English (`--language id|en`).
 3. Idea (+ profile reference images, if `--profile`) → TokenRouter image model → 9:16 image in
    `tiktok_output/`, named `tiktok_YYYYMMDD_HHMMSS.<ext>`. The model occasionally returns no image
    (a refusal, common on reference-image edits of real faces); the generator auto-retries

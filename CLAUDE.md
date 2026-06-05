@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image, uploads it to ImageKit, and records the post in Airtable. `tiktok_pipeline.py` is the top-level orchestrator; the other modules are independent, individually-runnable stages it chains together via lazy imports:
 
 1. `idea_generator.py` — (optional) theme → Claude on TokenRouter → one-line image idea
-2. `content_generator.py` — topic → Claude on TokenRouter → `{image_prompt, caption, description, hashtags}` (text-only call; the `image_prompt` feeds image generation, the rest is the post copy)
+2. `content_generator.py` — topic → Claude on TokenRouter → `{image_prompt, caption, description, hashtags}` (text-only call; the `image_prompt` feeds image generation, the rest is the post copy). The post copy language is selectable via `--language id|en` (default `id`, Indonesian; `en` for English) on both `tiktok-content` and `tiktok-pipeline` — `image_prompt` always stays English for the image model
 3. `tiktok_image_generator.py` — prompt → TokenRouter image model → 9:16 PNG in `tiktok_output/`
 4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
 5. `airtable_logger.py` — idea + caption + ImageKit URL → one record in the Airtable `Posts` table (the downstream tiktok-agent's source of truth)
@@ -32,6 +32,9 @@ uv run tiktok-pipeline --theme "cyberpunk street food"
 
 # Own prompt (skip the AI idea step)
 uv run tiktok-pipeline --prompt "neon skyline"
+
+# Post copy in English (defaults to Indonesian)
+uv run tiktok-pipeline --theme "cyberpunk street food" --language en
 
 # As a recurring character (persona + reference-image identity)
 uv run tiktok-pipeline --profile kalila --theme "morning skincare routine"

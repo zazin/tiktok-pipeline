@@ -36,6 +36,9 @@ uv run scripts/content_generator.py "morning skincare routine" --persona "Lika, 
 - `--persona TEXT` — write the caption in this person's voice and keep the
   `image_prompt` scene-focused (their face/identity is fixed later by a reference
   image at generation time).
+- `--language id|en` (alias `--lang`) — language of the caption, description and
+  hashtags. `id` = Indonesian (default), `en` = English. `image_prompt` always
+  stays in English regardless.
 - `--model ID` — TokenRouter model id (default `anthropic/claude-haiku-4.5`).
 - `--json` — print the full JSON object.
 

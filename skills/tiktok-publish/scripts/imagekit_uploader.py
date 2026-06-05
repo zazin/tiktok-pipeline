@@ -8,7 +8,9 @@ Credentials are read from environment variables:
   - IMAGEKIT_PUBLIC_KEY
   - IMAGEKIT_PRIVATE_KEY
 
-URL endpoint: https://ik.imagekit.io/salt/
+Optional:
+  - IMAGEKIT_URL_ENDPOINT — public URL endpoint used to build the returned
+    image URL. Defaults to https://ik.imagekit.io/salt/ when unset.
 
 Usage (CLI):
     python imagekit_uploader.py path/to/image.png
@@ -37,7 +39,8 @@ import requests
 
 
 IMAGEKIT_UPLOAD_URL = "https://upload.imagekit.io/api/v1/files/upload"
-IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/salt/"
+# Default public URL endpoint; override with the IMAGEKIT_URL_ENDPOINT env var.
+DEFAULT_URL_ENDPOINT = "https://ik.imagekit.io/salt/"
 
 
 class ImageKitError(Exception):
@@ -52,6 +55,12 @@ def _get_private_key() -> str:
             "Export it before running the uploader."
         )
     return key
+
+
+def _get_url_endpoint() -> str:
+    """Public URL endpoint from env, falling back to the default. Always ends in '/'."""
+    endpoint = os.getenv("IMAGEKIT_URL_ENDPOINT") or DEFAULT_URL_ENDPOINT
+    return endpoint.rstrip("/") + "/"
 
 
 def _auth_header(private_key: str) -> dict:
@@ -136,7 +145,13 @@ def upload_image(
             err = resp.text
         raise ImageKitError(f"Upload failed (HTTP {resp.status_code}): {err}")
 
-    return resp.json()
+    result = resp.json()
+    # Build the public URL from the configured endpoint + returned filePath, so a
+    # custom IMAGEKIT_URL_ENDPOINT is honored. Fall back to the API's own url.
+    file_path = result.get("filePath")
+    if file_path:
+        result["url"] = _get_url_endpoint() + file_path.lstrip("/")
+    return result
 
 
 def upload_images(

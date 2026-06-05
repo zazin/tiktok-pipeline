@@ -9,7 +9,7 @@ the old ImageKit custom-metadata hand-off.)
 
 Credentials / target are read from environment variables:
   - AIRTABLE_API_KEY    — personal access token (needs data.records:write)
-  - AIRTABLE_BASE_ID    — base id, starts with "app..."
+  - AIRTABLE_BASE_ID    — base id ("app..."). Optional; defaults to the project base.
   - AIRTABLE_TABLE_NAME — table name or table id ("tbl..."). Optional; defaults to "Posts".
 
 Create the table/fields once with `airtable_migrate.py` before using this.
@@ -41,7 +41,8 @@ import requests
 
 
 AIRTABLE_API_URL = "https://api.airtable.com/v0"
-# Default table name when AIRTABLE_TABLE_NAME is unset.
+# Default base id / table name when the matching env vars are unset.
+DEFAULT_BASE_ID = "appYyBCWQlkLLMAX4"
 DEFAULT_TABLE_NAME = "Posts"
 
 
@@ -60,12 +61,8 @@ def _get_api_key() -> str:
 
 
 def _get_base_id(base_id: Optional[str] = None) -> str:
-    base = base_id or os.getenv("AIRTABLE_BASE_ID")
-    if not base:
-        raise AirtableError(
-            "AIRTABLE_BASE_ID env var is not set (expected an 'app...' id)."
-        )
-    return base
+    # Optional: falls back to DEFAULT_BASE_ID when unset.
+    return base_id or os.getenv("AIRTABLE_BASE_ID") or DEFAULT_BASE_ID
 
 
 def _get_table_name(table_name: Optional[str] = None) -> str:

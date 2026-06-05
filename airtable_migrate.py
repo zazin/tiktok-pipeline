@@ -15,7 +15,7 @@ remove or retype a field, edit it by hand in the Airtable UI.
 Credentials / target are read from environment variables:
   - AIRTABLE_API_KEY    — personal access token. For schema changes it needs the
                           scope `schema.bases:write` (plus `schema.bases:read`).
-  - AIRTABLE_BASE_ID    — base id, starts with "app..."
+  - AIRTABLE_BASE_ID    — base id ("app..."). Optional; defaults to the project base.
   - AIRTABLE_TABLE_NAME — table name to create/extend. Optional; defaults to "Posts".
 
 Usage (CLI):

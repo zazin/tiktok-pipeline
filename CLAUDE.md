@@ -63,10 +63,10 @@ Read from env (or a `.env` file — note `.env` is gitignored and holds live sec
 - `IMAGEKIT_PRIVATE_KEY` — uploader (ImageKit Basic auth: private key as username, empty password)
 - `IMAGEKIT_PUBLIC_KEY` — uploader
 - `AIRTABLE_API_KEY` — Airtable logger + migrate (Bearer personal access token; `data.records:write` for the logger, plus `schema.bases:write` for `airtable-migrate`)
-- `AIRTABLE_BASE_ID` — Airtable base id (`app...`)
 
 Optional:
 
+- `AIRTABLE_BASE_ID` — Airtable base id (`app...`). Defaults to the project base when unset (`DEFAULT_BASE_ID` in `airtable_logger.py`).
 - `AIRTABLE_TABLE_NAME` — target table (name or `tbl...` id). Defaults to `Posts` when unset (`DEFAULT_TABLE_NAME` in `airtable_logger.py`, used by both the logger and `airtable-migrate`).
 - `IMAGEKIT_URL_ENDPOINT` — public URL endpoint the uploader uses to build the returned image URL (`endpoint` + the uploaded `filePath`). Defaults to `https://ik.imagekit.io/salt/` when unset; a trailing slash is normalized.
 

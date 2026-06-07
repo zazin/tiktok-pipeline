@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -115,8 +116,9 @@ def publish_post(
     Publish a single post message to HiveMQ over a TLS connection.
 
     Args:
-        payload: Mapping serialized to a JSON message body. A "CreatedAt" ISO-8601
-            UTC timestamp is added automatically unless the caller supplies one.
+        payload: Mapping serialized to a JSON message body. A unique "id"
+            (the agent's required correlation key) and a "CreatedAt" ISO-8601 UTC
+            timestamp are added automatically unless the caller supplies them.
         topic: Override HIVEMQ_TOPIC.
         qos: MQTT quality of service (default 1, at-least-once).
         timeout: Seconds to wait for the broker to acknowledge the publish.
@@ -133,8 +135,11 @@ def publish_post(
     port = _get_port()
     topic = _get_topic(topic)
 
-    # Stamp the creation time unless the caller already set one. ISO-8601 UTC.
+    # Stamp a unique correlation id and the creation time unless the caller
+    # already set them. The agent REQUIRES "id" (it drops messages without one)
+    # and echoes it back on the status topic. ISO-8601 UTC for CreatedAt.
     payload = dict(payload)
+    payload.setdefault("id", uuid.uuid4().hex)
     payload.setdefault("CreatedAt", datetime.now(timezone.utc).isoformat())
     body = json.dumps(payload, ensure_ascii=False)
 

@@ -1,22 +1,21 @@
 # TikTok Image Pipeline
 
-Generate TikTok-ready 9:16 images with AI, upload them to ImageKit CDN, and record each post in Airtable. The whole flow can run fully automatically: an AI invents the image idea, writes a matching caption, an image model renders it, the image is uploaded to ImageKit, and a row describing the post is written to Airtable. With a **profile**, every image can be the same recurring character (identity preserved from reference photos) on a consistent persona.
+Generate TikTok-ready 9:16 images with AI, upload them to ImageKit CDN, and publish each post to HiveMQ. The whole flow can run fully automatically: an AI invents the image idea, writes a matching caption, an image model renders it, the image is uploaded to ImageKit, and a message describing the post is published to HiveMQ. With a **profile**, every image can be the same recurring character (identity preserved from reference photos) on a consistent persona.
 
-The pipeline has exactly two outputs: **the image on ImageKit** and **a post record in Airtable**. The downstream [tiktok-agent](https://github.com/zazin/tiktok-agent) reads the Airtable row to post the content.
+The pipeline has two outputs: **the image on ImageKit** and **a HiveMQ message** describing the post. The downstream [tiktok-agent](https://github.com/zazin/tiktok-agent) subscribes to the HiveMQ topic to post the content.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `tiktok_pipeline.py` | **Top-level app** — AI idea → image → ImageKit → Airtable |
+| `tiktok_pipeline.py` | **Top-level app** — AI idea → image → ImageKit → HiveMQ |
 | `idea_generator.py` | Invent a TikTok image idea via Claude (on TokenRouter) |
 | `content_generator.py` | Generate a TikTok post's image prompt + caption + description + hashtags (text-only AI call) |
 | `profile_loader.py` | Load a `profiles/<name>/` persona + reference images |
 | `profiles/<name>/` | A persona (`profile.json`) + reference photos of one person |
 | `tiktok_image_generator.py` | Generate 9:16 images via TokenRouter API |
 | `imagekit_uploader.py` | Upload generated images to ImageKit CDN |
-| `airtable_logger.py` | Write one post record per run to the Airtable `Posts` table |
-| `airtable_migrate.py` | One-time/idempotent additive setup of the `Posts` table schema |
+| `hivemq_publisher.py` | Publish one post message per run to a HiveMQ Cloud topic |
 | `env_loader.py` | Zero-dependency `.env` loader used by every CLI |
 | `tiktok_output/` | Folder where all generated images are stored |
 | `pyproject.toml` / `uv.lock` | uv project definition, console scripts, pinned deps |
@@ -34,18 +33,15 @@ uv sync
 #   IMAGEKIT_PRIVATE_KEY=your_key     # ImageKit upload
 #   IMAGEKIT_PUBLIC_KEY=your_key
 #   IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_id
-#   AIRTABLE_API_KEY=your_token       # Airtable record
-#   AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
-#   AIRTABLE_TABLE_NAME=Posts
+#   HIVEMQ_HOST=xxxx.s1.eu.hivemq.cloud   # HiveMQ publish
+#   HIVEMQ_USERNAME=your_user
+#   HIVEMQ_PASSWORD=your_pass
 # (or just export them — real env vars take precedence over .env)
 
-# 3. One-time: create the Airtable Posts table (idempotent, additive)
-uv run airtable-migrate
-
-# 4. Fully automatic: AI idea → image → ImageKit → Airtable
+# 3. Fully automatic: AI idea → image → ImageKit → HiveMQ
 uv run tiktok-pipeline
 
-# 5. Steer the AI idea by theme
+# 4. Steer the AI idea by theme
 uv run tiktok-pipeline --theme "cyberpunk street food at night"
 
 # 6. Bring your own prompt (skip the AI idea step)
@@ -92,11 +88,8 @@ uv run tiktok-generate "neon skyline" --out skyline.png --upload
 # Upload an existing image to ImageKit
 uv run imagekit-upload cat.png --folder /tiktok
 
-# Write a single Airtable record by hand (testing the logger)
-uv run airtable-log --idea "a cat in red boots" --caption "..." --image-url https://ik.imagekit.io/salt/x.png
-
-# Set up / extend the Airtable Posts table schema (additive, idempotent)
-uv run airtable-migrate
+# Publish a single HiveMQ message by hand (testing the publisher)
+uv run hivemq-publish --idea "a cat in red boots" --caption "..." --image-url https://ik.imagekit.io/salt/x.png --json
 
 # Just generate an idea
 uv run tiktok-idea --theme "cozy coffee shop"
@@ -119,9 +112,9 @@ You can still run the modules directly (e.g. `uv run python tiktok_pipeline.py .
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Python 3.10+ (uv provisions this for you)
 - An ImageKit account (`IMAGEKIT_PRIVATE_KEY` / `IMAGEKIT_PUBLIC_KEY`)
-- An Airtable base + personal access token (`AIRTABLE_API_KEY` / `AIRTABLE_BASE_ID` / `AIRTABLE_TABLE_NAME`). The token needs `data.records:write`, plus `schema.bases:write` to run `airtable-migrate`.
+- A HiveMQ Cloud broker (`HIVEMQ_HOST` / `HIVEMQ_USERNAME` / `HIVEMQ_PASSWORD`; optional `HIVEMQ_PORT`, `HIVEMQ_TOPIC`, `HIVEMQ_CLIENT_ID`) for the post hand-off (`--no-hivemq` to skip). See [docs/hivemq.md](docs/hivemq.md).
 
-Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and pinned in `uv.lock` — `uv sync` installs them. The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
+Runtime dependencies (`requests`, `pillow`, `paho-mqtt`) are declared in `pyproject.toml` and pinned in `uv.lock` — `uv sync` installs them. The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
 
 ## Pipeline Flow
 
@@ -134,29 +127,30 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
    (`--retries`, default 2) before failing.
 4. Image → **ImageKit** → public CDN URL (`--no-imagekit` to skip). Non-fatal: a failure is
    recorded in the result.
-5. Idea + caption + description + ImageKit URL → **Airtable** record in the `Posts` table, with
-   `Status = pending` (`--no-airtable` to skip). **Fatal** — without the row there is nothing for
-   the agent to post.
+5. Idea + caption + description + ImageKit URL → **HiveMQ** message on topic `tiktok/posts`, with
+   `Status = pending` (`--no-hivemq` to skip). Non-fatal: a broker failure is recorded in the
+   result (the CLI still exits non-zero). See [docs/hivemq.md](docs/hivemq.md).
 
-The post details live in **Airtable**, not in ImageKit metadata. The downstream
-[tiktok-agent](https://github.com/zazin/tiktok-agent) reads `Status = "pending"` rows from the
-`Posts` table, posts them using the `ImageURL` + `Caption` + `Description`, and flips `Status`
-to `posted` (or `failed`). Create the table once with `uv run airtable-migrate` — it is additive
-only (the Airtable Meta API cannot delete, rename, or retype a field; do those in the Airtable UI).
+The post details are published over **HiveMQ**, not in ImageKit metadata. The downstream
+[tiktok-agent](https://github.com/zazin/tiktok-agent) subscribes to the topic, posts the content
+using the `ImageURL` + `Caption` + `Description`, and marks it done. Delivery is QoS 1 with a
+durable subscription on the agent side — see [docs/hivemq.md](docs/hivemq.md).
 
-### Airtable `Posts` schema
+### HiveMQ message payload
 
-| Field | Type | Written by the pipeline |
-|-------|------|--------------------------|
-| `Idea` | Single line text (primary) | the idea |
-| `Caption` | Long text | AI caption |
-| `Description` | Long text | AI description |
-| `ImageURL` | URL | ImageKit public URL |
-| `ImageKitFileId` | Single line text | ImageKit file id |
-| `ImagePath` | Single line text | image filename incl. ext |
-| `Profile` | Single line text | profile name (if `--profile`) |
-| `Status` | Single select (`pending` / `posted` / `failed`) | `pending` |
-| `CreatedAt` | Created time | auto (Airtable) |
+JSON on topic `tiktok/posts` (default; override with `HIVEMQ_TOPIC`):
+
+| Field | Value |
+|-------|-------|
+| `Idea` | the idea |
+| `Caption` | AI caption |
+| `Description` | AI description |
+| `ImageURL` | ImageKit public URL |
+| `ImageKitFileId` | ImageKit file id |
+| `ImagePath` | image filename incl. ext |
+| `Profile` | profile name (if `--profile`) |
+| `Status` | `pending` |
+| `CreatedAt` | ISO-8601 UTC timestamp (auto) |
 
 ## Skills (for other agents)
 

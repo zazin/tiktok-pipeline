@@ -9,7 +9,7 @@ Renders a vertical 9:16 image from a text prompt, saving a PNG under
 `tiktok_output/` (auto-named `tiktok_YYYYMMDD_HHMMSS.png`) or a path you choose.
 Pillow guarantees the final 1080x1920 size (center-crop, letterbox, or none). This
 skill only generates the image — to publish it, pass the saved file to the
-`tiktok-publish` skill (ImageKit upload + Airtable record).
+`tiktok-publish` skill (ImageKit upload + HiveMQ publish).
 
 ## Requirements
 

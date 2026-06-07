@@ -3,7 +3,7 @@
 TikTok image generator using TokenRouter.
 
 Generates an image from a text prompt and saves it as a PNG file. Pairs
-naturally with tiktok_publish.py to publish the result (ImageKit + Airtable).
+naturally with tiktok_publish.py to publish the result (ImageKit + HiveMQ).
 
 Credentials are read from the environment:
   - TOKENROUTER_API_KEY

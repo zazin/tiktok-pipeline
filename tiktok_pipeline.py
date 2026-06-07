@@ -8,19 +8,15 @@ Runs the whole flow end to end:
     2. Write a matching caption + description  (content_generator.generate_content)
     3. Generate a 9:16 image from that idea    (tiktok_image_generator.generate_image)
     4. Upload the image to ImageKit CDN        (imagekit_uploader.upload_image)
-    5. Store the post record in Airtable       (airtable_logger.create_record)
-    6. Push a real-time trigger to HiveMQ      (hivemq_publisher.publish_post)
+    5. Push the post to HiveMQ                  (hivemq_publisher.publish_post)
 
-The pipeline has two durable outputs: the image lives on ImageKit, and a row in
-Airtable describes the post (idea, caption, description, image URL, status). The
-downstream tiktok-agent reads that Airtable row to post the content; the HiveMQ
-message is a best-effort push so the agent can react instantly instead of polling.
+The pipeline's outputs are: the image lives on ImageKit, and a HiveMQ message
+describes the post (idea, caption, description, image URL, status). The downstream
+tiktok-agent subscribes to that HiveMQ topic and posts the content.
 
-The ImageKit upload is non-fatal (recorded in the result). The Airtable log step is
-fatal — without the row there is nothing for the agent to post. The HiveMQ publish is
-also non-fatal (Airtable stays the source of truth). Pass --prompt to skip the AI idea
-step and use your own prompt, or --no-imagekit / --no-airtable / --no-hivemq to skip a
-step.
+The ImageKit upload is non-fatal (recorded in the result). The HiveMQ publish is
+also non-fatal (recorded in the result). Pass --prompt to skip the AI idea step and
+use your own prompt, or --no-imagekit / --no-hivemq to skip a step.
 
 All generated images are saved into one folder (default: tiktok_output/), so the
 whole run history is kept in one place.
@@ -29,15 +25,12 @@ Credentials (read from the environment, depending on which steps run):
   - TOKENROUTER_API_KEY   (AI idea step + image generation — both via TokenRouter)
   - IMAGEKIT_PRIVATE_KEY  (ImageKit upload, unless --no-imagekit)
   - IMAGEKIT_PUBLIC_KEY   (ImageKit upload, unless --no-imagekit)
-  - AIRTABLE_API_KEY      (Airtable record log, unless --no-airtable)
-  - AIRTABLE_BASE_ID      (Airtable record log, unless --no-airtable)
-  - AIRTABLE_TABLE_NAME   (Airtable record log, unless --no-airtable)
   - HIVEMQ_HOST           (HiveMQ push, unless --no-hivemq)
   - HIVEMQ_USERNAME       (HiveMQ push, unless --no-hivemq)
   - HIVEMQ_PASSWORD       (HiveMQ push, unless --no-hivemq)
 
 Usage (CLI):
-    # Fully automatic: AI idea -> image -> ImageKit -> Airtable
+    # Fully automatic: AI idea -> image -> ImageKit -> HiveMQ
     python tiktok_pipeline.py
 
     # Steer the idea by theme
@@ -81,26 +74,23 @@ def run_pipeline(
     seed: Optional[int] = None,
     to_imagekit: bool = True,
     imagekit_folder: str = "/tiktok",
-    to_airtable: bool = True,
     to_hivemq: bool = True,
 ) -> dict:
     """
-    Run the full generate → upload → record pipeline for a single image.
+    Run the full generate → upload → publish pipeline for a single image.
 
     Returns a result dict:
         {
           "idea": str,
           "path": str,
           "imagekit": {"status": "success"|"failed"|"skipped", "url"/"error": ...},
-          "airtable": {"status": "success"|"skipped", "record_id": ...},
           "hivemq": {"status": "success"|"failed"|"skipped", "topic"/"error": ...},
         }
 
     Raises:
         Exception subclasses from the idea/generation steps — those are fatal.
-        The Airtable logging step is ALSO fatal: an AirtableError propagates out
-        of this function. The ImageKit upload and HiveMQ publish failures are
-        captured in the result dict, not raised.
+        The ImageKit upload and HiveMQ publish failures are captured in the result
+        dict, not raised.
     """
     # Lazy imports so a missing optional dependency or missing creds only break
     # the step that actually needs them.
@@ -134,7 +124,7 @@ def run_pipeline(
         print(f"Idea (AI): {idea}")
 
     # --- 1b. Caption (separate text-only AI call, BEFORE the image) -------
-    # Generated up front so it can be logged to the Airtable record alongside
+    # Generated up front so it can be included in the HiveMQ message alongside
     # the image URL. Non-fatal: a caption failure must not block the image.
     caption_text = ""
     description_text = ""
@@ -175,13 +165,12 @@ def run_pipeline(
         "description": description_text,
         "path": str(path),
         "imagekit": {"status": "skipped"},
-        "airtable": {"status": "skipped"},
         "hivemq": {"status": "skipped"},
     }
 
     # --- 3. Upload: ImageKit (non-fatal) ---------------------------------
     # Caption/description are NOT attached as ImageKit custom metadata —
-    # they go into the Airtable record below instead.
+    # they go into the HiveMQ message below instead.
     if to_imagekit:
         try:
             from imagekit_uploader import upload_image, ImageKitError
@@ -197,35 +186,23 @@ def run_pipeline(
             result["imagekit"] = {"status": "failed", "error": str(e)}
             print(f"ImageKit: FAILED — {e}", file=sys.stderr)
 
-    # --- 4. Log to Airtable (FATAL) --------------------------------------
-    # The downstream tiktok-agent reads this record to post the content, so a
-    # failure here is fatal: let AirtableError propagate to the caller/CLI.
-    if to_airtable:
-        from airtable_logger import create_record  # AirtableError is fatal
-        ik = result["imagekit"]
-        fields = {
-            "Idea": idea,
-            "Caption": caption_text,
-            "Description": description_text,
-            "ImageURL": ik.get("url", "") if ik["status"] == "success" else "",
-            "ImageKitFileId": ik.get("file_id", "") if ik["status"] == "success" else "",
-            "ImagePath": path.name,  # filename + ext only, e.g. tiktok_20260604_230055.jpeg
-            "Profile": profile or "",
-            "Status": "pending",
-        }
-        rec = create_record(fields)
-        result["airtable"] = {"status": "success", "record_id": rec["id"]}
-        print(f"Airtable: recorded {rec['id']}")
-
-    # --- 5. Push to HiveMQ (non-fatal) -----------------------------------
-    # A real-time trigger for the downstream agent, carrying the Airtable record
-    # id so it can correlate the message and flip Status. Only published when a
-    # record exists; Airtable stays the durable fallback, so a broker hiccup here
-    # must not fail the run.
-    if to_hivemq and to_airtable:
+    # --- 4. Push to HiveMQ (non-fatal) -----------------------------------
+    # The downstream tiktok-agent subscribes to the HiveMQ topic and posts the
+    # content. Non-fatal: a broker hiccup is recorded in the result, not raised.
+    if to_hivemq:
         try:
             from hivemq_publisher import publish_post
-            payload = {"AirtableRecordId": rec["id"], **fields}
+            ik = result["imagekit"]
+            payload = {
+                "Idea": idea,
+                "Caption": caption_text,
+                "Description": description_text,
+                "ImageURL": ik.get("url", "") if ik["status"] == "success" else "",
+                "ImageKitFileId": ik.get("file_id", "") if ik["status"] == "success" else "",
+                "ImagePath": path.name,  # filename + ext only, e.g. tiktok_20260604_230055.jpeg
+                "Profile": profile or "",
+                "Status": "pending",
+            }
             pub = publish_post(payload)
             result["hivemq"] = {"status": "success", "topic": pub["topic"]}
             print(f"HiveMQ: published to {pub['topic']}")
@@ -241,7 +218,7 @@ def _cli() -> int:
     load_env()
 
     parser = argparse.ArgumentParser(
-        description="Auto-generate a TikTok image, upload it to ImageKit, record it in Airtable, and push a HiveMQ trigger."
+        description="Auto-generate a TikTok image, upload it to ImageKit, and push the post to HiveMQ."
     )
     # Idea / generation
     parser.add_argument("--prompt", default=None, help="Use this exact prompt instead of an AI-generated idea")
@@ -265,10 +242,8 @@ def _cli() -> int:
     # Upload: ImageKit
     parser.add_argument("--no-imagekit", action="store_true", help="Skip uploading to ImageKit")
     parser.add_argument("--folder", default="/tiktok", help="ImageKit folder (default: /tiktok)")
-    # Logging: Airtable (the downstream agent's source of truth)
-    parser.add_argument("--no-airtable", action="store_true", help="Skip writing the Airtable record")
-    # Push: HiveMQ (real-time trigger for the downstream agent)
-    parser.add_argument("--no-hivemq", action="store_true", help="Skip publishing the HiveMQ trigger")
+    # Push: HiveMQ (the downstream agent's source of truth)
+    parser.add_argument("--no-hivemq", action="store_true", help="Skip publishing the post to HiveMQ")
     args = parser.parse_args()
 
     try:
@@ -293,17 +268,15 @@ def _cli() -> int:
             seed=args.seed,
             to_imagekit=not args.no_imagekit,
             imagekit_folder=args.folder,
-            to_airtable=not args.no_airtable,
             to_hivemq=not args.no_hivemq,
         )
     except Exception as e:
-        # Fatal: idea / image-generation / Airtable-logging failure.
+        # Fatal: idea / image-generation failure.
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # --- Summary + exit code --------------------------------------------
     ik = result["imagekit"]["status"]
-    airtable = result["airtable"]["status"]
     hivemq = result["hivemq"]["status"]
     print("\n--- Summary ---")
     print(f"idea:     {result['idea']}")
@@ -311,12 +284,11 @@ def _cli() -> int:
         print(f"caption:  {result['caption']}")
     print(f"image:    {result['path']}")
     print(f"imagekit: {ik}" + (f" ({result['imagekit'].get('url','')})" if ik == "success" else ""))
-    print(f"airtable: {airtable}" + (f" ({result['airtable'].get('record_id','')})" if airtable == "success" else ""))
     print(f"hivemq:   {hivemq}" + (f" ({result['hivemq'].get('topic','')})" if hivemq == "success" else ""))
 
-    # Airtable failure is fatal (handled above). Flag a non-zero exit if the
-    # ImageKit upload was requested but failed, so the row has no image URL.
-    if ik == "failed":
+    # Flag a non-zero exit if the ImageKit upload was requested but failed (the
+    # HiveMQ message would carry no image URL), or if the HiveMQ publish failed.
+    if ik == "failed" or hivemq == "failed":
         return 1
     return 0
 

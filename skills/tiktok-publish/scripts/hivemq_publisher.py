@@ -2,11 +2,9 @@
 """
 HiveMQ publisher module.
 
-Publishes one MQTT message per generated TikTok post to a HiveMQ Cloud broker, so
-the downstream tiktok-agent (separate repo) gets a real-time push trigger instead
-of only polling Airtable. Airtable stays the durable source of truth: this is a
-best-effort, additional notification that carries the Airtable record id so the
-agent can correlate the message and flip the row's Status when it has posted.
+Publishes one MQTT message per generated TikTok post to a HiveMQ Cloud broker. The
+downstream tiktok-agent (separate repo) subscribes to the topic and posts the
+content — so this HiveMQ message is the pipeline's hand-off to the agent.
 
 Delivery is QoS 1 (at-least-once); messages are NOT retained. The agent is expected
 to subscribe with a persistent/durable session (a fixed client id and
@@ -23,14 +21,13 @@ Credentials / target are read from environment variables:
 
 Usage (CLI):
     python hivemq_publisher.py --idea "a cat in red boots" --caption "..." \
-        --image-url https://ik.imagekit.io/salt/x.png --record-id rec123 --status pending
+        --image-url https://ik.imagekit.io/salt/x.png --status pending
 
 Usage (as a module):
     from hivemq_publisher import publish_post
 
     info = publish_post({
-        "AirtableRecordId": "rec123", "Idea": "...", "Caption": "...",
-        "ImageURL": "...", "Status": "pending",
+        "Idea": "...", "Caption": "...", "ImageURL": "...", "Status": "pending",
     })
     print(info["topic"], info["mid"])
 """
@@ -182,7 +179,6 @@ def _cli() -> int:
     parser.add_argument("--file-id", default=None, help="ImageKit file id")
     parser.add_argument("--image-path", default=None, help="Image filename incl. ext (e.g. tiktok_20260604_230055.jpeg)")
     parser.add_argument("--profile", default=None, help="Profile name")
-    parser.add_argument("--record-id", default=None, help="Airtable record id to correlate the post")
     parser.add_argument("--status", default="pending", help="Status (default: pending)")
     parser.add_argument("--topic", default=None, help="MQTT topic (default: HIVEMQ_TOPIC or tiktok/posts)")
     parser.add_argument("--json", action="store_true", help="Print the full publish-result JSON")
@@ -190,7 +186,6 @@ def _cli() -> int:
 
     # Only include fields the user actually provided (besides Status, which defaults).
     field_map = {
-        "AirtableRecordId": args.record_id,
         "Idea": args.idea,
         "Caption": args.caption,
         "Description": args.description,

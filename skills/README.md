@@ -25,7 +25,7 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 |---|---|---|
 | [`tiktok-content`](tiktok-content/SKILL.md) | From a topic → `{image_prompt, caption, description, hashtags}` | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image to a local PNG (multi-angle `--ref`) | `TOKENROUTER_API_KEY` |
-| [`tiktok-publish`](tiktok-publish/SKILL.md) | Publish an image to TikTok: upload to ImageKit + queue a pending Posts record in Airtable | `IMAGEKIT_PRIVATE_KEY`, `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` |
+| [`tiktok-publish`](tiktok-publish/SKILL.md) | Publish an image to TikTok: upload to ImageKit + publish a pending post to HiveMQ | `IMAGEKIT_PRIVATE_KEY`, `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD` |
 
 The skills are independent: install only the capabilities you need. A common chain
 is `tiktok-content` (image prompt + caption + hashtags) → `tiktok-image` (render the

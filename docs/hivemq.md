@@ -1,4 +1,4 @@
-# HiveMQ — the real-time post trigger
+# HiveMQ — the post hand-off
 
 This document describes the MQTT message the TikTok pipeline publishes to HiveMQ Cloud. It is
 the reference for the **downstream app** (the separate `tiktok-agent`) that consumes these
@@ -6,14 +6,10 @@ messages to post content to TikTok.
 
 ## Overview
 
-For every generated post, after the Airtable record is written, the pipeline publishes **one
-MQTT message** carrying the same post fields plus the new Airtable record id. This is a
-**real-time push trigger** so the agent can react instantly instead of polling Airtable.
-
-Airtable stays the **durable source of truth**: the HiveMQ publish is best-effort and
-**non-fatal** — if the broker is unreachable, the run still succeeds (the failure is recorded
-in the result dict) and the agent can fall back to polling `Status = "pending"` rows. See
-[airtable.md](airtable.md).
+For every generated post, after the image is uploaded to ImageKit, the pipeline publishes **one
+MQTT message** to a HiveMQ topic carrying the post fields (idea, caption, description, the image
+URL + fileId, the image filename, profile, status). This message is the pipeline's hand-off: the
+downstream agent subscribes to the topic and posts the content to TikTok.
 
 ## Connection / access
 
@@ -35,12 +31,10 @@ The pipeline connects to HiveMQ Cloud over TLS.
 
 ## Message payload
 
-The body is JSON (UTF-8), with field names mirroring the Airtable `Posts` columns plus
-`AirtableRecordId`:
+The body is JSON (UTF-8):
 
 ```json
 {
-  "AirtableRecordId": "rec0123456789",
   "Idea": "a cat in red boots on a neon street",
   "Caption": "...",
   "Description": "...",
@@ -55,8 +49,7 @@ The body is JSON (UTF-8), with field names mirroring the Airtable `Posts` column
 
 Only fields with a value are included (besides `Status`, which defaults to `pending`).
 `CreatedAt` is an ISO-8601 UTC timestamp stamped at publish time unless the caller supplies one.
-Use `AirtableRecordId` to fetch/update the corresponding Airtable row (e.g. flip `Status` to
-`posted`/`failed` after posting).
+`ImageKitFileId` / `ImagePath` uniquely identify the post for de-duplication on the agent side.
 
 ## Subscriber guidance (the tiktok-agent)
 
@@ -68,11 +61,8 @@ offline:
 - Connect with **`clean_session=false`** (MQTT 3.1.1) / `clean_start=false` + a non-zero session
   expiry (MQTT 5) so the broker keeps the subscription and queues missed QoS-1 messages.
 - Subscribe to `tiktok/posts` (or the configured `HIVEMQ_TOPIC`) at **QoS 1**.
-- On each message, post to TikTok using `ImageURL` + `Caption` + `Description`, then update the
-  Airtable row identified by `AirtableRecordId`.
-
-Polling Airtable for `Status = "pending"` rows remains a valid fallback if a message is ever
-missed.
+- On each message, post to TikTok using `ImageURL` + `Caption` + `Description`, and de-dupe on
+  `ImageKitFileId` / `ImagePath` so a redelivered message isn't posted twice.
 
 ## Manual publish (testing)
 

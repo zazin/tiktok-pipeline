@@ -4,33 +4,29 @@
 # dependencies = ["requests>=2.31", "paho-mqtt>=2.0"]
 # ///
 """
-TikTok publish step: ImageKit upload + Airtable record + HiveMQ trigger.
+TikTok publish step: ImageKit upload + HiveMQ publish.
 
-Takes a local image, uploads it to ImageKit (returning a public CDN URL), writes
-one Status=pending Posts record to Airtable, then pushes a real-time HiveMQ message
-so the downstream tiktok-agent can react instantly. The agent reads pending rows
-and does the actual TikTok posting — so this is the "publish to TikTok" step from
-this repo's side. Pairs with tiktok_image_generator.py (which only generates the
-local image now).
+Takes a local image, uploads it to ImageKit (returning a public CDN URL), then
+publishes the post (idea, caption, description, the ImageKit URL + fileId, the
+image filename, profile, status) as a HiveMQ message. The downstream tiktok-agent
+subscribes to that topic and does the actual TikTok posting — so this is the
+"publish to TikTok" step from this repo's side. Pairs with tiktok_image_generator.py
+(which only generates the local image now).
 
 Credentials are read from the environment (or a local .env):
-  - IMAGEKIT_PRIVATE_KEY                                       (ImageKit upload)
-  - AIRTABLE_API_KEY / AIRTABLE_BASE_ID / AIRTABLE_TABLE_NAME  (Airtable record)
-  - HIVEMQ_HOST / HIVEMQ_USERNAME / HIVEMQ_PASSWORD            (HiveMQ trigger)
-
-The Airtable Posts table must already exist (create it with airtable_migrate.py).
-The Airtable write is fatal; the HiveMQ publish is best-effort (non-fatal).
+  - IMAGEKIT_PRIVATE_KEY                              (ImageKit upload)
+  - HIVEMQ_HOST / HIVEMQ_USERNAME / HIVEMQ_PASSWORD   (HiveMQ publish)
 
 Usage (CLI):
     python tiktok_publish.py ./tiktok_output/x.png --idea "a cat in red boots" \
         --caption "..." --status pending
-    python tiktok_publish.py ./x.png --no-airtable        # upload only
+    python tiktok_publish.py ./x.png --no-hivemq        # upload only
 
 Usage (as a module):
-    from tiktok_publish import upload_and_log
+    from tiktok_publish import upload_and_publish
 
-    result = upload_and_log("x.png", idea="...", caption="...")
-    print(result["imagekit"]["url"], result["airtable"]["id"])
+    result = upload_and_publish("x.png", idea="...", caption="...")
+    print(result["imagekit"]["url"], result["hivemq"]["topic"])
 """
 
 from __future__ import annotations
@@ -44,10 +40,10 @@ from typing import Optional
 
 
 class UploadError(Exception):
-    """Raised when the upload-and-log step fails."""
+    """Raised when the upload-and-publish step fails."""
 
 
-def upload_and_log(
+def upload_and_publish(
     image_path: str | os.PathLike,
     *,
     folder: str = "/tiktok",
@@ -57,35 +53,31 @@ def upload_and_log(
     profile: Optional[str] = None,
     status: str = "pending",
     unique_file_name: bool = False,
-    to_airtable: bool = True,
     to_hivemq: bool = True,
 ) -> dict:
     """
-    Upload an image to ImageKit, log a Posts record to Airtable, and push a HiveMQ trigger.
+    Upload an image to ImageKit and publish the post to HiveMQ.
 
     Args:
         image_path: Local image file to upload.
         folder: ImageKit destination folder.
-        idea: Airtable Idea field (primary).
-        caption: Airtable Caption field.
-        description: Airtable Description field.
-        profile: Airtable Profile field.
-        status: Airtable Status field (default "pending").
+        idea: Post idea (primary field).
+        caption: Post caption.
+        description: Post description.
+        profile: Profile name.
+        status: Post status (default "pending").
         unique_file_name: When False (default), the file keeps its exact name on
             ImageKit (generated names are already timestamped/unique, so this gives
             clean, valid filenames). Set True to let ImageKit append a random
             suffix (which can include a leading dash, e.g. "name_-Ab12.png").
-        to_airtable: When False, only upload to ImageKit and skip the record.
-        to_hivemq: When False, skip the HiveMQ trigger. Only published when a
-            record was written (it carries the Airtable record id).
+        to_hivemq: When False, only upload to ImageKit and skip the HiveMQ publish.
 
     Returns:
-        {"imagekit": <upload dict>, "airtable": <record dict or None>,
-         "hivemq": <publish dict or None>}.
+        {"imagekit": <upload dict>, "hivemq": <publish dict or None>}.
 
     Raises:
-        UploadError: If the ImageKit upload or the Airtable write fails. A HiveMQ
-            publish failure is non-fatal — it is captured in the result dict.
+        UploadError: If the ImageKit upload fails. A HiveMQ publish failure is
+            non-fatal — it is captured in the result dict.
     """
     from imagekit_uploader import upload_image, ImageKitError
 
@@ -95,11 +87,9 @@ def upload_and_log(
     except ImageKitError as e:
         raise UploadError(f"ImageKit upload failed: {e}") from e
 
-    result = {"imagekit": up, "airtable": None, "hivemq": None}
+    result = {"imagekit": up, "hivemq": None}
 
-    if to_airtable:
-        from airtable_logger import create_record, AirtableError
-
+    if to_hivemq:
         field_map = {
             "Idea": idea,
             "Caption": caption,
@@ -107,28 +97,19 @@ def upload_and_log(
             "ImageURL": up.get("url"),
             "ImageKitFileId": up.get("fileId"),
             # The name ImageKit actually stored it under (matches ImageURL),
-            # not the local filename — so the record always references the real file.
+            # not the local filename — so the message always references the real file.
             "ImagePath": up.get("name") or path.name,
             "Profile": profile,
             "Status": status,
         }
         # Only send fields that have a value (besides Status, which defaults).
-        fields = {k: v for k, v in field_map.items() if v is not None}
+        payload = {k: v for k, v in field_map.items() if v is not None}
         try:
-            rec = create_record(fields)
-        except AirtableError as e:
-            raise UploadError(f"Airtable record failed: {e}") from e
-        result["airtable"] = rec
-
-        # HiveMQ trigger (non-fatal): a real-time push carrying the record id.
-        if to_hivemq:
-            try:
-                from hivemq_publisher import publish_post
-                payload = {"AirtableRecordId": rec["id"], **fields}
-                result["hivemq"] = publish_post(payload)
-            except Exception as e:  # HiveMQError or import error — non-fatal
-                result["hivemq"] = {"status": "failed", "error": str(e)}
-                print(f"HiveMQ: FAILED — {e}", file=sys.stderr)
+            from hivemq_publisher import publish_post
+            result["hivemq"] = publish_post(payload)
+        except Exception as e:  # HiveMQError or import error — non-fatal
+            result["hivemq"] = {"status": "failed", "error": str(e)}
+            print(f"HiveMQ: FAILED — {e}", file=sys.stderr)
 
     return result
 
@@ -138,23 +119,22 @@ def _cli() -> int:
     load_env()
 
     parser = argparse.ArgumentParser(
-        description="Upload an image to ImageKit, log a Posts record to Airtable, and push a HiveMQ trigger."
+        description="Upload an image to ImageKit and publish the post to HiveMQ."
     )
     parser.add_argument("image", help="Local image file to upload")
     parser.add_argument("--folder", default="/tiktok", help="ImageKit folder (default: /tiktok)")
-    parser.add_argument("--idea", default=None, help="Airtable Idea field (primary)")
-    parser.add_argument("--caption", default=None, help="Airtable Caption field")
-    parser.add_argument("--description", default=None, help="Airtable Description field")
-    parser.add_argument("--profile", default=None, help="Airtable Profile field")
-    parser.add_argument("--status", default="pending", help="Airtable Status field (default: pending)")
+    parser.add_argument("--idea", default=None, help="Post idea (primary field)")
+    parser.add_argument("--caption", default=None, help="Post caption")
+    parser.add_argument("--description", default=None, help="Post description")
+    parser.add_argument("--profile", default=None, help="Profile name")
+    parser.add_argument("--status", default="pending", help="Post status (default: pending)")
     parser.add_argument("--unique", action="store_true", help="Let ImageKit append a random suffix to the file name (off by default — names are kept clean/exact)")
-    parser.add_argument("--no-airtable", action="store_true", help="Only upload to ImageKit; skip the Airtable record")
-    parser.add_argument("--no-hivemq", action="store_true", help="Skip the HiveMQ trigger")
+    parser.add_argument("--no-hivemq", action="store_true", help="Only upload to ImageKit; skip the HiveMQ publish")
     parser.add_argument("--json", action="store_true", help="Print the full result JSON")
     args = parser.parse_args()
 
     try:
-        result = upload_and_log(
+        result = upload_and_publish(
             args.image,
             folder=args.folder,
             idea=args.idea,
@@ -163,7 +143,6 @@ def _cli() -> int:
             profile=args.profile,
             status=args.status,
             unique_file_name=args.unique,
-            to_airtable=not args.no_airtable,
             to_hivemq=not args.no_hivemq,
         )
     except UploadError as e:
@@ -174,10 +153,12 @@ def _cli() -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(f"Public URL: {result['imagekit'].get('url')}")
-        if result["airtable"]:
-            print(f"Airtable record: {result['airtable']['id']}")
         if result["hivemq"] and result["hivemq"].get("status") == "success":
             print(f"HiveMQ topic: {result['hivemq']['topic']}")
+
+    # Non-zero exit if the HiveMQ publish was requested but failed.
+    if result["hivemq"] and result["hivemq"].get("status") == "failed":
+        return 1
     return 0
 
 

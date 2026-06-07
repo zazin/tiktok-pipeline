@@ -1,30 +1,23 @@
 ---
 name: tiktok-publish
-description: Publish a finished image to TikTok by uploading it to ImageKit (public CDN URL), writing one Status=pending Posts record to Airtable, and pushing a real-time HiveMQ trigger; the downstream tiktok-agent reacts to the push (and can fall back to pending rows) and does the actual posting. Use when an agent has an image file ready and wants it queued for TikTok. Requires IMAGEKIT_PRIVATE_KEY, (unless --no-airtable) AIRTABLE_API_KEY/AIRTABLE_BASE_ID/AIRTABLE_TABLE_NAME, and (unless --no-hivemq) HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD.
+description: Publish a finished image to TikTok by uploading it to ImageKit (public CDN URL) and publishing one Status=pending post message to HiveMQ; the downstream tiktok-agent subscribes to the topic and does the actual posting. Use when an agent has an image file ready and wants it queued for TikTok. Requires IMAGEKIT_PRIVATE_KEY and (unless --no-hivemq) HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD.
 ---
 
-# TikTok Publish (ImageKit + Airtable + HiveMQ)
+# TikTok Publish (ImageKit + HiveMQ)
 
-Takes a local image, uploads it to ImageKit, writes one `Posts` record to Airtable
-(idea, caption, description, the ImageKit URL + fileId, the image filename, profile,
-status — `Status=pending` by default), then pushes a real-time HiveMQ message (the
-same fields plus the new Airtable record id) to topic `tiktok/posts`. The Airtable
-record is the durable source of truth; the HiveMQ push triggers the downstream
-tiktok-agent instantly. Pairs with the `tiktok-image` skill (which only generates
-the local image).
+Takes a local image, uploads it to ImageKit, then publishes one post message to
+HiveMQ (idea, caption, description, the ImageKit URL + fileId, the image filename,
+profile, status — `Status=pending` by default) on topic `tiktok/posts`. That message
+is the hand-off: the downstream tiktok-agent subscribes to the topic and posts the
+content. Pairs with the `tiktok-image` skill (which only generates the local image).
 
 ## Requirements
 
 - `IMAGEKIT_PRIVATE_KEY` — ImageKit upload (Basic-auth username, empty password).
-- `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME` — the Airtable
-  record (not needed with `--no-airtable`). The `Posts` table must already exist
-  (fields: Idea, Caption, Description, ImageURL, ImageKitFileId, ImagePath,
-  Profile, Status, CreatedAt).
-- `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD` — the HiveMQ Cloud push (not
-  needed with `--no-hivemq`; also skipped when there is no Airtable record).
-  Optional: `HIVEMQ_PORT` (default 8883), `HIVEMQ_TOPIC` (default `tiktok/posts`),
-  `HIVEMQ_CLIENT_ID`. The publish is best-effort — a failure is reported but does
-  not fail the run.
+- `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD` — the HiveMQ Cloud publish (not
+  needed with `--no-hivemq`). Optional: `HIVEMQ_PORT` (default 8883), `HIVEMQ_TOPIC`
+  (default `tiktok/posts`), `HIVEMQ_CLIENT_ID`. The publish is best-effort — a
+  failure is reported (and the CLI exits non-zero) but the image still uploads.
 - Credentials come from the real environment or a `.env` in the cwd (or next to the
   script); real env vars win over `.env`.
 - `uv` recommended — the inline PEP 723 header auto-installs `requests` + `paho-mqtt`.
@@ -32,14 +25,11 @@ the local image).
 ## Run
 
 ```bash
-# upload + write a pending Posts record
+# upload + publish a pending post message
 uv run scripts/tiktok_publish.py ./tiktok_output/x.png --idea "a cat in red boots" --caption "morning vibes"
 
-# upload only, no Airtable record (also skips HiveMQ — it needs the record id)
-uv run scripts/tiktok_publish.py ./x.png --no-airtable --folder /tiktok
-
-# upload + Airtable record, but skip the HiveMQ push
-uv run scripts/tiktok_publish.py ./x.png --idea "..." --no-hivemq
+# upload only, no HiveMQ publish
+uv run scripts/tiktok_publish.py ./x.png --no-hivemq --folder /tiktok
 ```
 
 Without `uv`: `pip install requests paho-mqtt` then `python3 scripts/tiktok_publish.py ...`.
@@ -48,25 +38,23 @@ Without `uv`: `pip install requests paho-mqtt` then `python3 scripts/tiktok_publ
 
 - `image` (positional) — local image file to upload.
 - `--folder PATH` — ImageKit destination folder (default `/tiktok`).
-- `--idea TEXT` — Airtable `Idea` field (primary).
-- `--caption TEXT`, `--description TEXT` — Airtable `Caption` / `Description`.
-- `--profile NAME` — Airtable `Profile` field.
-- `--status VALUE` — Airtable `Status` field (default `pending`).
+- `--idea TEXT` — post `Idea` field (primary).
+- `--caption TEXT`, `--description TEXT` — post `Caption` / `Description`.
+- `--profile NAME` — post `Profile` field.
+- `--status VALUE` — post `Status` field (default `pending`).
 - `--unique` — let ImageKit append a random suffix to the file name. Off by
   default so the file keeps its exact name (e.g. `tiktok_YYYYMMDD_HHMMSS.png` from
   the `tiktok-image` skill, which is already unique). Turning this on can produce
   names like `name_-Ab12.png`.
-- `--no-airtable` — upload to ImageKit only; skip the record (and the HiveMQ push).
-- `--no-hivemq` — skip the HiveMQ trigger (still uploads + records to Airtable).
+- `--no-hivemq` — upload to ImageKit only; skip the HiveMQ publish.
 - `--json` — print the full result JSON.
 
 ## Output & errors
 
-Default output: the public ImageKit URL, the Airtable record id (unless
-`--no-airtable`), and the HiveMQ topic when the push succeeds. `ImageURL`,
-`ImageKitFileId`, and `ImagePath` are filled from the upload automatically —
-`ImagePath` is the **actual name ImageKit stored the file under** (matches
-`ImageURL`), so with the default (no `--unique`) it stays the clean
+Default output: the public ImageKit URL, and the HiveMQ topic when the publish
+succeeds. `ImageURL`, `ImageKitFileId`, and `ImagePath` are filled from the upload
+automatically — `ImagePath` is the **actual name ImageKit stored the file under**
+(matches `ImageURL`), so with the default (no `--unique`) it stays the clean
 `tiktok_YYYYMMDD_HHMMSS.png` produced by `tiktok-image`. Only non-empty fields are
-sent. Exits non-zero if the ImageKit upload or the Airtable write fails; a HiveMQ
-publish failure is reported on stderr but does **not** fail the run.
+sent. Exits non-zero if the ImageKit upload fails, or if the HiveMQ publish was
+requested but failed.

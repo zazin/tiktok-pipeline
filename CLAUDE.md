@@ -12,8 +12,9 @@ A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image, up
 4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
 5. `airtable_logger.py` — idea + caption + ImageKit URL → one record in the Airtable `Posts` table (the downstream tiktok-agent's source of truth)
 6. `airtable_migrate.py` — one-time/idempotent additive schema setup for that table (via the Airtable Meta API)
+7. `hivemq_publisher.py` — post fields + Airtable record id → one MQTT message on a HiveMQ Cloud topic (a real-time push trigger for the downstream agent, in addition to the Airtable record)
 
-The project has exactly two outputs: **the image on ImageKit** and **a post record in Airtable**. `tiktok_pipeline.py` runs idea → caption → generate → imagekit → airtable. The ImageKit upload is non-fatal (a failure is recorded in the result dict). The Airtable log step is **fatal** (the downstream agent depends on the record). `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
+The project's durable outputs are **the image on ImageKit** and **a post record in Airtable**; the HiveMQ message is a best-effort real-time notification on top. `tiktok_pipeline.py` runs idea → caption → generate → imagekit → airtable → hivemq. The ImageKit upload is non-fatal (a failure is recorded in the result dict). The Airtable log step is **fatal** (the downstream agent depends on the record). The HiveMQ publish is **non-fatal** (Airtable stays the source of truth). `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
 
 All generated images land in one folder (`tiktok_output/`, override with `--output-dir`). The folder is committed via `tiktok_output/.gitkeep`; its image contents are gitignored. Auto-named files follow a consistent, chronologically sortable timestamp format — `tiktok_YYYYMMDD_HHMMSS.<ext>` (built by `_timestamped_path` in `tiktok_image_generator.py`, with a `_N` suffix only on same-second collisions). Passing `--out` overrides the name entirely.
 
@@ -54,9 +55,12 @@ uv run imagekit-upload *.jpg --folder /gallery --json
 
 # Write a single Airtable record by hand (testing the logger)
 uv run airtable-log --idea "a cat in red boots" --caption "..." --image-url https://ik.imagekit.io/salt/x.png
+
+# Publish a single HiveMQ trigger by hand (testing the publisher)
+uv run hivemq-publish --idea "a cat in red boots" --caption "..." --record-id rec123 --json
 ```
 
-Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `airtable-log`→`airtable_logger`, `airtable-migrate`→`airtable_migrate` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
+Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `airtable-log`→`airtable_logger`, `airtable-migrate`→`airtable_migrate`, `hivemq-publish`→`hivemq_publisher` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
 
 ## Required environment
 
@@ -66,12 +70,16 @@ Read from env (or a `.env` file — note `.env` is gitignored and holds live sec
 - `IMAGEKIT_PRIVATE_KEY` — uploader (ImageKit Basic auth: private key as username, empty password)
 - `IMAGEKIT_PUBLIC_KEY` — uploader
 - `AIRTABLE_API_KEY` — Airtable logger + migrate (Bearer personal access token; `data.records:write` for the logger, plus `schema.bases:write` for `airtable-migrate`)
+- `HIVEMQ_HOST` / `HIVEMQ_USERNAME` / `HIVEMQ_PASSWORD` — HiveMQ publisher (HiveMQ Cloud broker host + credentials; unless `--no-hivemq`)
 
 Optional:
 
 - `AIRTABLE_BASE_ID` — Airtable base id (`app...`). Defaults to the project base when unset (`DEFAULT_BASE_ID` in `airtable_logger.py`).
 - `AIRTABLE_TABLE_NAME` — target table (name or `tbl...` id). Defaults to `Posts` when unset (`DEFAULT_TABLE_NAME` in `airtable_logger.py`, used by both the logger and `airtable-migrate`).
 - `IMAGEKIT_URL_ENDPOINT` — public URL endpoint the uploader uses to build the returned image URL (`endpoint` + the uploaded `filePath`). Defaults to `https://ik.imagekit.io/salt/` when unset; a trailing slash is normalized.
+- `HIVEMQ_PORT` — HiveMQ broker TLS port. Defaults to `8883` when unset (`DEFAULT_PORT` in `hivemq_publisher.py`).
+- `HIVEMQ_TOPIC` — topic to publish to. Defaults to `tiktok/posts` when unset (`DEFAULT_TOPIC` in `hivemq_publisher.py`).
+- `HIVEMQ_CLIENT_ID` — MQTT client id for the publisher. Defaults to empty (broker assigns one) when unset.
 
 A local `.env` is loaded automatically: every module's `_cli()` calls `env_loader.load_env()` (a zero-dependency loader in `env_loader.py`) before parsing args, so you don't need to `source .env`. Real environment variables take precedence over `.env` values (`override=False`); the loader looks for `.env` next to the module first, then the cwd. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
 
@@ -87,7 +95,9 @@ A local `.env` is loaded automatically: every module's `_cli()` calls `env_loade
 
 **Reference images have two intents.** `--ref-kind preserve` (default) keeps the subject visually identical (faces, branded products); `feature` places the subject into a new scene. These map to two different prompt templates (`REF_PRESERVE_PROMPT_TEMPLATE` / `REF_FEATURE_PROMPT_TEMPLATE`). References are downscaled to `MAX_REF_IMAGE_DIM` (1024) and re-encoded JPEG q90 before sending.
 
-**Errors are funneled through module-specific exceptions** (`ImageGenError`, `ImageKitError`, `IdeaError`, `AirtableError`); CLIs catch these and return non-zero. `upload_image` and the pipeline's ImageKit step deliberately do NOT abort the run — the ImageKit failure is collected as `{"status": "failed", ...}`. `airtable_logger.create_record` is the exception: it DOES raise, because the Airtable step is fatal.
+**Errors are funneled through module-specific exceptions** (`ImageGenError`, `ImageKitError`, `IdeaError`, `AirtableError`, `HiveMQError`); CLIs catch these and return non-zero. `upload_image` and the pipeline's ImageKit step deliberately do NOT abort the run — the ImageKit failure is collected as `{"status": "failed", ...}`. The HiveMQ publish step is likewise non-fatal (failure collected in the result dict). `airtable_logger.create_record` is the exception: it DOES raise, because the Airtable step is fatal.
+
+**HiveMQ is a real-time push on top of Airtable, not a replacement.** After the Airtable record is written, `run_pipeline` (and `tiktok_publish.upload_and_log`) call `hivemq_publisher.publish_post(...)` with the same post fields plus `AirtableRecordId=rec["id"]`, publishing one JSON message to `HIVEMQ_TOPIC` (default `tiktok/posts`) over TLS at QoS 1. It only runs when an Airtable record exists (it carries that record's id), and a failure is non-fatal so a broker hiccup never blocks an otherwise-good run — Airtable remains the durable fallback the agent can poll. The publisher uses paho-mqtt's v2 callback API (`CallbackAPIVersion.VERSION2`), connects, `loop_start()`s, publishes, and `wait_for_publish()`s for the broker ack before disconnecting. Durable delivery (so the agent gets a backlog after a disconnect) is the **subscriber's** responsibility — see [[tiktok-two-repo-architecture]] and `docs/hivemq.md`.
 
 **The pipeline isolates the ImageKit failure but treats Airtable as fatal.** `run_pipeline` (`tiktok_pipeline.py`) treats the idea, image-generation, and Airtable-logging steps as fatal, but wraps the caption step and the ImageKit upload in their own try/except. It returns a result dict with per-step status; the CLI exits non-zero if the ImageKit upload failed, or if the Airtable write raised (which propagates out of `run_pipeline` to the CLI's catch-all → exit 1).
 
@@ -95,4 +105,4 @@ A local `.env` is loaded automatically: every module's `_cli()` calls `env_loade
 
 **Profiles = recurring character (persona + reference images).** `--profile <name>` loads `profiles/<name>/profile.json` via `profile_loader.load_profile`. The profile supplies (1) `reference_paths` (the listed `reference_images`, resolved/verified) which override any `--ref` and are passed to `generate_image` to preserve the person's identity (`reference_kind` defaults to `preserve`), and (2) a `persona` string — `profile_loader._build_persona` folds the demographic fields + `content_pillars` into it — threaded into `generate_idea(persona=...)` and `generate_content(persona=...)`. When a persona is present, `idea_generator` switches to `_PERSONA_SYSTEM_PROMPT`, which describes the SCENE/pose/wardrobe (not facial features, since identity is fixed by the reference). The default image model (`gemini-3.1-flash-image-preview`) is in `REFERENCE_IMAGE_MODELS`, so reference images work out of the box.
 
-**`skills/` packages capabilities as installable Agent Skills (generated, not authored).** The live skills are `tiktok-content` (`content_generator.py` — image prompt + caption + description + hashtags from a topic), `tiktok-image` (generate a PNG only), and `tiktok-publish` (`tiktok_publish.py` — ImageKit upload + Airtable record, which queues the post for the downstream tiktok-agent). `skills/<name>/scripts/` contains COPIES of the root modules — the root modules are the single source of truth, never hand-edit the copies. `skills/sync.sh` regenerates every bundle: it copies each skill's entry module plus the siblings it imports (e.g. `tiktok-publish` bundles `imagekit_uploader.py` + `airtable_logger.py`) and prepends a PEP 723 `# /// script` header to the ENTRY copy only, so `uv run skills/<name>/scripts/<entry>.py` auto-installs deps. After changing any root module, run `bash skills/sync.sh`. The `SKILL.md` files and `skills/README.md` are hand-maintained (sync.sh does not touch them). Skills are consumed by external agents via `npx skills add zazin/tiktok-pipeline/skills/<name>`.
+**`skills/` packages capabilities as installable Agent Skills (generated, not authored).** The live skills are `tiktok-content` (`content_generator.py` — image prompt + caption + description + hashtags from a topic), `tiktok-image` (generate a PNG only), and `tiktok-publish` (`tiktok_publish.py` — ImageKit upload + Airtable record + HiveMQ push, which queues the post for the downstream tiktok-agent). `skills/<name>/scripts/` contains COPIES of the root modules — the root modules are the single source of truth, never hand-edit the copies. `skills/sync.sh` regenerates every bundle: it copies each skill's entry module plus the siblings it imports (e.g. `tiktok-publish` bundles `imagekit_uploader.py` + `airtable_logger.py` + `hivemq_publisher.py`) and prepends a PEP 723 `# /// script` header to the ENTRY copy only, so `uv run skills/<name>/scripts/<entry>.py` auto-installs deps. After changing any root module, run `bash skills/sync.sh`. The `SKILL.md` files and `skills/README.md` are hand-maintained (sync.sh does not touch them). Skills are consumed by external agents via `npx skills add zazin/tiktok-pipeline/skills/<name>`.

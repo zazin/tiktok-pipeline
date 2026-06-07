@@ -120,8 +120,9 @@ You can still run the modules directly (e.g. `uv run python tiktok_pipeline.py .
 - Python 3.10+ (uv provisions this for you)
 - An ImageKit account (`IMAGEKIT_PRIVATE_KEY` / `IMAGEKIT_PUBLIC_KEY`)
 - An Airtable base + personal access token (`AIRTABLE_API_KEY` / `AIRTABLE_BASE_ID` / `AIRTABLE_TABLE_NAME`). The token needs `data.records:write`, plus `schema.bases:write` to run `airtable-migrate`.
+- A HiveMQ Cloud broker (`HIVEMQ_HOST` / `HIVEMQ_USERNAME` / `HIVEMQ_PASSWORD`; optional `HIVEMQ_PORT`, `HIVEMQ_TOPIC`, `HIVEMQ_CLIENT_ID`) for the real-time push (`--no-hivemq` to skip). See [docs/hivemq.md](docs/hivemq.md).
 
-Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and pinned in `uv.lock` — `uv sync` installs them. The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
+Runtime dependencies (`requests`, `pillow`, `paho-mqtt`) are declared in `pyproject.toml` and pinned in `uv.lock` — `uv sync` installs them. The idea generator uses an Anthropic Claude model **served through TokenRouter**, so it reuses `TOKENROUTER_API_KEY` — no separate Anthropic key or SDK needed.
 
 ## Pipeline Flow
 
@@ -137,12 +138,16 @@ Runtime dependencies (`requests`, `pillow`) are declared in `pyproject.toml` and
 5. Idea + caption + description + ImageKit URL → **Airtable** record in the `Posts` table, with
    `Status = pending` (`--no-airtable` to skip). **Fatal** — without the row there is nothing for
    the agent to post.
+6. Push a real-time **HiveMQ** message (JSON post + the Airtable record id) to topic `tiktok/posts`
+   (`--no-hivemq` to skip). Non-fatal — Airtable stays the source of truth, so a broker hiccup just
+   gets recorded in the result. See [docs/hivemq.md](docs/hivemq.md).
 
 The post details live in **Airtable**, not in ImageKit metadata. The downstream
-[tiktok-agent](https://github.com/zazin/tiktok-agent) reads `Status = "pending"` rows from the
-`Posts` table, posts them using the `ImageURL` + `Caption` + `Description`, and flips `Status`
-to `posted` (or `failed`). Create the table once with `uv run airtable-migrate` — it is additive
-only (the Airtable Meta API cannot delete, rename, or retype a field; do those in the Airtable UI).
+[tiktok-agent](https://github.com/zazin/tiktok-agent) is triggered by the HiveMQ push (and can fall
+back to reading `Status = "pending"` rows from the `Posts` table), posts the content using the
+`ImageURL` + `Caption` + `Description`, and flips `Status` to `posted` (or `failed`). Create the
+table once with `uv run airtable-migrate` — it is additive only (the Airtable Meta API cannot
+delete, rename, or retype a field; do those in the Airtable UI).
 
 ### Airtable `Posts` schema
 

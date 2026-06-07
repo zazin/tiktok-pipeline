@@ -1,12 +1,13 @@
 [project]
 name = "tiktok-pipeline"
 version = "0.1.0"
-description = "Generate TikTok-ready 9:16 images with AI, upload them to ImageKit CDN, and record each post in Airtable."
+description = "Generate TikTok-ready 9:16 images with AI, upload them to ImageKit CDN, record each post in Airtable, and push a real-time HiveMQ trigger."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pillow>=10.0",
     "requests>=2.31",
+    "paho-mqtt>=2.0",
 ]
 
 [project.scripts]
@@ -19,6 +20,7 @@ tiktok-profile = "profile_loader:_cli"
 imagekit-upload = "imagekit_uploader:_cli"
 airtable-log = "airtable_logger:_cli"
 airtable-migrate = "airtable_migrate:_cli"
+hivemq-publish = "hivemq_publisher:_cli"
 
 [tool.uv]
 package = true
@@ -38,5 +40,6 @@ include = [
     "imagekit_uploader.py",
     "airtable_logger.py",
     "airtable_migrate.py",
+    "hivemq_publisher.py",
     "env_loader.py",
 ]

@@ -156,6 +156,14 @@ def _extract_data_url(response: dict) -> str:
                 if url:
                     return url
 
+    # Fallback: content may be a plain string with the image embedded as a
+    # markdown image or a bare data/http URL, e.g.
+    # "![image](data:image/png;base64,...)". Gemini via TokenRouter does this.
+    if isinstance(content, str) and content:
+        m = re.search(r"""(data:image/[^)\s"']+|https?://[^)\s"']+)""", content)
+        if m:
+            return m.group(1)
+
     # No image. If the model explicitly refused, surface that reason; either way
     # this is treated as a (often transient) refusal that generate_image retries.
     refusal = msg.get("refusal")

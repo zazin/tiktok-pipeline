@@ -12,6 +12,8 @@ A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image, up
 4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
 5. `hivemq_publisher.py` — idea + caption + ImageKit URL + post fields → one MQTT message on a HiveMQ Cloud topic (the pipeline's hand-off to the downstream tiktok-agent, which subscribes and posts the content)
 
+Separately from the image pipeline, the repo also provides a **comment-on-a-post** tool (`comment_generator.py` + `comment_on_post.py`): AI-write a TikTok comment from a sentiment (e.g. positive/negative) and publish a `{PostURL, Comment}` message to the `tiktok/comments` topic. The downstream tiktok-agent opens the post by URL and leaves the comment (contract: tiktok-agent `docs/comment-on-post.md`). This tool never looks at the post itself — context about the post is an optional `--about` text input.
+
 The pipeline's outputs are **the image on ImageKit** and **a HiveMQ message** describing the post. `tiktok_pipeline.py` runs idea → caption → generate → imagekit → hivemq. The ImageKit upload is non-fatal (a failure is recorded in the result dict). The HiveMQ publish is also non-fatal (recorded in the result dict), but the CLI exits non-zero when it fails since the message is the hand-off. `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
 
 All generated images land in one folder (`tiktok_output/`, override with `--output-dir`). The folder is committed via `tiktok_output/.gitkeep`; its image contents are gitignored. Auto-named files follow a consistent, chronologically sortable timestamp format — `tiktok_YYYYMMDD_HHMMSS.<ext>` (built by `_timestamped_path` in `tiktok_image_generator.py`, with a `_N` suffix only on same-second collisions). Passing `--out` overrides the name entirely.
@@ -50,9 +52,17 @@ uv run imagekit-upload *.jpg --folder /gallery --json
 
 # Publish a single HiveMQ message by hand (testing the publisher)
 uv run hivemq-publish --idea "a cat in red boots" --caption "..." --image-url https://ik.imagekit.io/salt/x.png --json
+
+# Comment on an existing post: AI-generate from a sentiment, then publish to tiktok/comments
+uv run tiktok-comment https://www.tiktok.com/@user/video/123 --sentiment positive
+uv run tiktok-comment <url> --sentiment negative --about "a 12-step skincare routine"
+uv run tiktok-comment <url> --comment "Nice video!"      # publish exact text, no AI
+
+# Just generate a comment (no publish)
+uv run tiktok-comment-gen positive --about "homemade matcha latte"
 ```
 
-Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `hivemq-publish`→`hivemq_publisher` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
+Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-comment`→`comment_on_post`, `tiktok-comment-gen`→`comment_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `hivemq-publish`→`hivemq_publisher` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
 
 ## Required environment
 
@@ -68,7 +78,8 @@ Optional:
 - `IMAGEKIT_URL_ENDPOINT` — public URL endpoint the uploader uses to build the returned image URL (`endpoint` + the uploaded `filePath`). Defaults to `https://ik.imagekit.io/salt/` when unset; a trailing slash is normalized.
 - `HIVEMQ_PORT` — HiveMQ broker TLS port. Defaults to `8883` when unset (`DEFAULT_PORT` in `hivemq_publisher.py`).
 - `HIVEMQ_TOPIC` — topic to publish to. Defaults to `tiktok/posts` when unset (`DEFAULT_TOPIC` in `hivemq_publisher.py`).
-- `HIVEMQ_CLIENT_ID` — MQTT client id for the publisher. Defaults to empty (broker assigns one) when unset.
+- `HIVEMQ_COMMENT_TOPIC` — topic for the comment-on-a-post tool. Defaults to `tiktok/comments` when unset (`DEFAULT_COMMENT_TOPIC` in `hivemq_publisher.py`).
+- `HIVEMQ_CLIENT_ID` — MQTT client id for `publish_post`. Defaults to empty (broker assigns one) when unset. `publish_comment` ignores it and always uses a broker-assigned id, so the comment publisher can never collide with the agent's own client ids (which would disconnect the agent).
 
 A local `.env` is loaded automatically: every module's `_cli()` calls `env_loader.load_env()` (a zero-dependency loader in `env_loader.py`) before parsing args, so you don't need to `source .env`. Real environment variables take precedence over `.env` values (`override=False`); the loader looks for `.env` next to the module first, then the cwd. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
 

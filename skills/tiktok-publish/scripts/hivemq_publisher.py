@@ -2,9 +2,15 @@
 """
 HiveMQ publisher module.
 
-Publishes one MQTT message per generated TikTok post to a HiveMQ Cloud broker. The
-downstream tiktok-agent (separate repo) subscribes to the topic and posts the
-content — so this HiveMQ message is the pipeline's hand-off to the agent.
+Publishes MQTT messages to a HiveMQ Cloud broker for the downstream tiktok-agent
+(separate repo), which subscribes and acts on them. Two hand-offs live here:
+
+  - publish_post    — one "new post" message on HIVEMQ_TOPIC ("tiktok/posts");
+                      the agent posts the image/caption.
+  - publish_comment — one "comment on an existing post" message on
+                      HIVEMQ_COMMENT_TOPIC ("tiktok/comments"); the agent opens the
+                      post by URL and leaves the given comment. See the contract at
+                      tiktok-agent docs/comment-on-post.md.
 
 Delivery is QoS 1 (at-least-once); messages are NOT retained. The agent is expected
 to subscribe with a persistent/durable session (a fixed client id and
@@ -12,12 +18,17 @@ clean_session=false) so it still receives a backlog after a brief disconnect —
 is the subscriber's concern.
 
 Credentials / target are read from environment variables:
-  - HIVEMQ_HOST      — broker host, e.g. "xxxx.s1.eu.hivemq.cloud" (required)
-  - HIVEMQ_USERNAME  — broker username (required)
-  - HIVEMQ_PASSWORD  — broker password (required)
-  - HIVEMQ_PORT      — TLS port. Optional; defaults to 8883.
-  - HIVEMQ_TOPIC     — topic to publish to. Optional; defaults to "tiktok/posts".
-  - HIVEMQ_CLIENT_ID — MQTT client id. Optional; the broker assigns one when unset.
+  - HIVEMQ_HOST          — broker host, e.g. "xxxx.s1.eu.hivemq.cloud" (required)
+  - HIVEMQ_USERNAME      — broker username (required)
+  - HIVEMQ_PASSWORD      — broker password (required)
+  - HIVEMQ_PORT          — TLS port. Optional; defaults to 8883.
+  - HIVEMQ_TOPIC         — post topic. Optional; defaults to "tiktok/posts".
+  - HIVEMQ_COMMENT_TOPIC — comment topic. Optional; defaults to "tiktok/comments".
+  - HIVEMQ_CLIENT_ID     — MQTT client id for publish_post. Optional; the broker
+                           assigns one when unset. publish_comment ignores this and
+                           always uses a broker-assigned id, so it can never collide
+                           with the agent's own client ids (e.g. "tiktok-commenter"),
+                           which would otherwise disconnect the agent.
 
 Usage (CLI):
     python hivemq_publisher.py --idea "a cat in red boots" --caption "..." \
@@ -45,9 +56,10 @@ from typing import Optional
 import paho.mqtt.client as mqtt
 
 
-# Default broker port / topic when the matching env vars are unset.
+# Default broker port / topics when the matching env vars are unset.
 DEFAULT_PORT = 8883
 DEFAULT_TOPIC = "tiktok/posts"
+DEFAULT_COMMENT_TOPIC = "tiktok/comments"
 
 
 class HiveMQError(Exception):
@@ -100,6 +112,11 @@ def _get_topic(topic: Optional[str] = None) -> str:
     return topic or os.getenv("HIVEMQ_TOPIC") or DEFAULT_TOPIC
 
 
+def _get_comment_topic(topic: Optional[str] = None) -> str:
+    # Optional: falls back to DEFAULT_COMMENT_TOPIC ("tiktok/comments") when unset.
+    return topic or os.getenv("HIVEMQ_COMMENT_TOPIC") or DEFAULT_COMMENT_TOPIC
+
+
 def _get_client_id() -> str:
     # Optional: empty string lets the broker assign a client id.
     return os.getenv("HIVEMQ_CLIENT_ID") or ""
@@ -129,10 +146,6 @@ def publish_post(
     Raises:
         HiveMQError: On missing creds, connect failure, or publish timeout.
     """
-    host = _get_host()
-    user = _get_username()
-    pw = _get_password()
-    port = _get_port()
     topic = _get_topic(topic)
 
     # Stamp a unique correlation id and the creation time unless the caller
@@ -141,11 +154,80 @@ def publish_post(
     payload = dict(payload)
     payload.setdefault("id", uuid.uuid4().hex)
     payload.setdefault("CreatedAt", datetime.now(timezone.utc).isoformat())
+
+    return _publish_json(payload, topic, qos=qos, timeout=timeout)
+
+
+def publish_comment(
+    post_url: str,
+    comment: str,
+    *,
+    topic: Optional[str] = None,
+    qos: int = 1,
+    timeout: int = 10,
+) -> dict:
+    """
+    Publish a single "comment on a post" message to HiveMQ over a TLS connection.
+
+    Per the tiktok-agent contract (docs/comment-on-post.md) the message carries
+    exactly two fields — ``PostURL`` and ``Comment`` — and deliberately NO ``id``
+    and NO ``CreatedAt`` (the agent acks via the MQTT message id and keys status by
+    ``PostURL``). Both fields must be non-empty or the agent drops the message, so
+    they are validated here.
+
+    Args:
+        post_url: Full TikTok post URL (the comment target / correlation key).
+        comment: Exact comment text to submit. The agent types it via ``adb input
+            text``, which cannot enter emoji / non-ASCII — keep it ASCII.
+        topic: Override HIVEMQ_COMMENT_TOPIC.
+        qos: MQTT quality of service (default 1, at-least-once).
+        timeout: Seconds to wait for the broker to acknowledge the publish.
+
+    Returns:
+        {"status": "success", "topic": <topic>, "mid": <message id>}.
+
+    Raises:
+        HiveMQError: On empty PostURL/Comment, missing creds, connect failure, or
+            publish timeout.
+    """
+    post_url = (post_url or "").strip()
+    comment = (comment or "").strip()
+    if not post_url:
+        raise HiveMQError("PostURL must not be empty (the agent drops such messages).")
+    if not comment:
+        raise HiveMQError("Comment must not be empty (the agent drops such messages).")
+
+    # Always let the broker assign the client id for comments (pass empty), so the
+    # comment publisher never reuses HIVEMQ_CLIENT_ID and never risks colliding with
+    # the agent's own client id (e.g. "tiktok-commenter"), which would disconnect it.
+    payload = {"PostURL": post_url, "Comment": comment}
+    return _publish_json(
+        payload, _get_comment_topic(topic), qos=qos, timeout=timeout, client_id=""
+    )
+
+
+def _publish_json(
+    payload: dict,
+    topic: str,
+    *,
+    qos: int = 1,
+    timeout: int = 10,
+    client_id: Optional[str] = None,
+) -> dict:
+    """Connect, publish one JSON message to ``topic``, wait for the ack, disconnect.
+
+    ``client_id`` defaults to HIVEMQ_CLIENT_ID (via _get_client_id); pass "" to force
+    a broker-assigned id regardless of the env var.
+    """
+    host = _get_host()
+    user = _get_username()
+    pw = _get_password()
+    port = _get_port()
     body = json.dumps(payload, ensure_ascii=False)
 
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        client_id=_get_client_id(),
+        client_id=_get_client_id() if client_id is None else client_id,
     )
     client.username_pw_set(user, pw)
     client.tls_set()  # system CA certs — HiveMQ Cloud uses a public CA

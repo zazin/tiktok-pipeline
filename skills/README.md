@@ -26,10 +26,12 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 | [`tiktok-content`](tiktok-content/SKILL.md) | From a topic → `{image_prompt, caption, description, hashtags}` | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image to a local PNG (multi-angle `--ref`) | `TOKENROUTER_API_KEY` |
 | [`tiktok-publish`](tiktok-publish/SKILL.md) | Publish an image to TikTok: upload to ImageKit + publish a pending post to HiveMQ | `IMAGEKIT_PRIVATE_KEY`, `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD` |
+| [`tiktok-comment`](tiktok-comment/SKILL.md) | Comment on an existing post: AI-write a comment from a sentiment (or take exact text) + publish to the `tiktok/comments` topic | `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD`, `TOKENROUTER_API_KEY` (generate only) |
 
 The skills are independent: install only the capabilities you need. A common chain
 is `tiktok-content` (image prompt + caption + hashtags) → `tiktok-image` (render the
 PNG from that prompt) → `tiktok-publish` (upload + queue it for TikTok).
+`tiktok-comment` is a standalone tool for leaving a comment on an existing post.
 
 ## Runtime
 

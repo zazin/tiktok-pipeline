@@ -36,6 +36,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 
@@ -43,9 +46,52 @@ from typing import Optional
 DEFAULT_LANGUAGE = "id"
 DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
+# Public, no-auth TikTok oEmbed endpoint — returns {title, author_name, ...} for any
+# public post. We use the title (which already includes hashtags) as the AI context
+# when the caller didn't pass --about. Private / region-locked posts return non-200
+# and the fetch degrades silently with a stderr warning.
+OEMBED_URL = "https://www.tiktok.com/oembed"
+OEMBED_TIMEOUT = 10
+
 
 class CommentError(Exception):
     """Raised when the comment-on-post step fails."""
+
+
+def _fetch_post_context(post_url: str) -> Optional[str]:
+    """
+    Fetch post context from TikTok's public oEmbed endpoint.
+
+    Returns the post title (which already includes the caption + hashtags) as a
+    cleaned single-line string, or ``None`` if the fetch fails for any reason
+    (private post, region-locked, network error, unexpected shape). The caller
+    is expected to fall back to a no-context comment in that case.
+
+    Args:
+        post_url: The full TikTok post URL.
+
+    Returns:
+        The cleaned title string, or None on failure.
+    """
+    try:
+        qs = urllib.parse.urlencode({"url": post_url})
+        req = urllib.request.Request(
+            f"{OEMBED_URL}?{qs}",
+            headers={"User-Agent": "tiktok-comment/1.0 (+oembed-context)"},
+        )
+        with urllib.request.urlopen(req, timeout=OEMBED_TIMEOUT) as r:
+            data = json.loads(r.read())
+        title = (data.get("title") or "").strip()
+        # Collapse runs of whitespace (the oEmbed title has them around hashtags).
+        title = " ".join(title.split())
+        return title or None
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, KeyError, ValueError) as e:
+        print(
+            f"Warning: oEmbed auto-context failed ({e.__class__.__name__}); "
+            f"proceeding without post context.",
+            file=sys.stderr,
+        )
+        return None
 
 
 def comment_on_post(
@@ -58,6 +104,7 @@ def comment_on_post(
     model: str = DEFAULT_MODEL,
     ascii_only: bool = True,
     topic: Optional[str] = None,
+    auto_context: bool = True,
 ) -> dict:
     """
     Generate (or accept) a comment and publish it for an existing TikTok post.
@@ -74,6 +121,9 @@ def comment_on_post(
         model: TokenRouter model for AI generation.
         ascii_only: Strip non-ASCII so the comment survives the agent's adb typing.
         topic: Override HIVEMQ_COMMENT_TOPIC.
+        auto_context: When True and ``about`` is not provided, fetch post context from
+            TikTok's public oEmbed endpoint and pass it as ``about``. Falls back to
+            a context-less comment with a stderr warning if oEmbed fails.
 
     Returns:
         {"comment": <published text>, "hivemq": <publish dict>}.
@@ -95,6 +145,12 @@ def comment_on_post(
             raise CommentError(
                 "Provide either a verbatim comment or a sentiment to generate one."
             )
+        # Auto-context: when the caller didn't describe the post, grab its caption
+        # (with hashtags) from oEmbed so the AI doesn't guess wildly.
+        if about is None and auto_context:
+            fetched = _fetch_post_context(post_url)
+            if fetched:
+                about = fetched
         from comment_generator import generate_comment, CommentGenError
         try:
             text = generate_comment(
@@ -134,6 +190,7 @@ def _cli() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"TokenRouter model for AI generation (default: {DEFAULT_MODEL})")
     parser.add_argument("--keep-non-ascii", action="store_true", help="Do NOT strip non-ASCII (the agent strips it anyway when typing)")
     parser.add_argument("--topic", default=None, help="MQTT topic (default: HIVEMQ_COMMENT_TOPIC or tiktok/comments)")
+    parser.add_argument("--no-auto-context", dest="auto_context", action="store_false", help="Skip the oEmbed auto-context fetch (default: fetch and use as --about when --about is not given)")
     parser.add_argument("--json", action="store_true", help="Print the full result JSON")
     args = parser.parse_args()
 
@@ -147,6 +204,7 @@ def _cli() -> int:
             model=args.model,
             ascii_only=not args.keep_non_ascii,
             topic=args.topic,
+            auto_context=args.auto_context,
         )
     except CommentError as e:
         print(f"Error: {e}", file=sys.stderr)

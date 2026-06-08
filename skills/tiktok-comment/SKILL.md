@@ -11,8 +11,11 @@ verbatim). It publishes one `{PostURL, Comment}` JSON message on topic
 `tiktok/comments`; the downstream tiktok-agent subscribes, opens the post by URL,
 and types the comment (contract: tiktok-agent `docs/comment-on-post.md`).
 
-This skill never looks at the post itself — give the AI context about the post with
-`--about` for a more relevant comment.
+This skill never looks at the post itself. By default it auto-fetches the post's
+caption + hashtags from TikTok's public oEmbed endpoint and uses that as the AI's
+context, so even with no `--about` the generated comment is on-topic. Pass `--about`
+to override the auto-fetched context, or `--no-auto-context` to skip the fetch
+entirely.
 
 ## Requirements
 
@@ -47,7 +50,10 @@ Without `uv`: `pip install paho-mqtt` then `python3 scripts/comment_on_post.py .
 - `--sentiment TEXT` — tone/intent for AI generation, e.g. `positive`, `negative`,
   `ask a question`. Required unless `--comment` is given.
 - `--comment TEXT` — exact comment text; skips AI generation.
-- `--about TEXT` — short note about what the post is about (improves AI relevance).
+- `--about TEXT` — short note about what the post is about (overrides the auto-fetched
+  oEmbed context for AI generation).
+- `--no-auto-context` — skip the oEmbed auto-context fetch (default: fetch and use as
+  the AI's `about` when `--about` is not given).
 - `--language id|en` — AI comment language (default `id`, Indonesian).
 - `--model NAME` — TokenRouter model for generation (default `anthropic/claude-haiku-4.5`).
 - `--keep-non-ascii` — don't strip non-ASCII. Off by default: the comment is kept

@@ -8,6 +8,7 @@ dependencies = [
     "pillow>=10.0",
     "requests>=2.31",
     "paho-mqtt>=2.0",
+    "pytrends>=4.9.2",
 ]
 
 [project.scripts]
@@ -21,6 +22,8 @@ tiktok-comment-gen = "comment_generator:_cli"
 tiktok-profile = "profile_loader:_cli"
 imagekit-upload = "imagekit_uploader:_cli"
 hivemq-publish = "hivemq_publisher:_cli"
+trending-recommender = "trending_recommender:_cli"
+trending-workflow = "trending_workflow:_cli"
 
 [tool.uv]
 package = true
@@ -42,4 +45,6 @@ include = [
     "imagekit_uploader.py",
     "hivemq_publisher.py",
     "env_loader.py",
+    "trending_recommender.py",
+    "trending_workflow.py",
 ]

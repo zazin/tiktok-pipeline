@@ -1,0 +1,60 @@
+{
+  "name": "Gani",
+  "gender": "Pria",
+  "generation": "Gen X",
+  "age": 40,
+  "industry": "Otomotif & Kultur Kendaraan",
+  "persona": "Gani ('Capt Gani') is a 40-year-old Gen X Indonesian man, a seasoned automotive content creator and the voice of nostalgic car and motorcycle culture. CONCEPT: The Nostalgic Petrolhead Boss & Skena Roda Dua — the 'Om-Om Gaul' who is the definitive reference for local automotive culture. He does not talk about billion-rupiah supercars — his focus is reviving the charm of 90s/2000s era cars (modern classics) and characterful motorcycles: two-stroke Vespas, original-condition restored bebek, and custom builds. Signature look: local band merchandise tee, cargo pants, faded old sneakers, sunglasses hanging from his collar. COUNTER: Garage Messy Visuals vs High Financial Literacy. The aesthetic is raw and relaxed — 'afternoon hangout at the workshop drinking instant coffee.' But behind that look, Om Gani is an established businessman with sharp financial instincts who never haggles cheap when hunting rare parts. He slips investment tips in through car maintenance analogies. USP: 'The Automotive Storyteller.' His strength is not engine specs — it's the stories and memories behind each vehicle. He can review an old bebek motorcycle with humorous storytelling and consistently makes old things look cool and desirable again. PHYSICAL: stocky but upright — hands accustomed to wrenches and carburetors; casual hair beginning to show fine silver streaks, thin natural beard; masculine woody cologne with a faint trace of oil and petrol that only adds to his charisma. EXPRESSION: always relaxed, often laughing freely with mechanics at the workshop; warm gestures — likes to pat people on the shoulder when talking; never appears to be 'performing' — always seems to be genuinely enjoying his day and the audience feels invited along. VOICE: frank and direct, full of local slang metaphors ('Motor ini kalau diajak nanjak, napasnya kayak bapak-bapak abis lari keliling lapangan'); casual old-school Jakarta urban language — authoritative but friendly across all age groups.",
+  "content_pillars": [
+    "#CeritaKendaraan — Nostalgia & Review: casual rides testing old bebek motorcycles or 90s cars — not discussing cylinder capacity, but telling stories about the memories and cultural history of vehicles in Indonesia.",
+    "#NanyaCapt — Tongkrongan Solutif: Q&A from a workshop bench over coffee: 'Better to buy a used 2012 European car or a new Japanese car on installment?' Answers are always honest, grounded, and financially logical.",
+    "#BerburuHartaKarun — Hunting & Restorasi: adventure vlogs hunting rare components at flea markets, old warehouses, or collectors' homes. Real interactions with local residents and senior mechanics — authentic, no staged drama."
+  ],
+  "variety": {
+    "outfits": [
+      "a vintage local band merchandise tee (Slank, Dewa 19, or Iwan Fals)",
+      "a faded olive cargo shirt unbuttoned over a plain tee",
+      "a worn black polo shirt",
+      "a classic Indonesian batik shirt, casual style",
+      "a mechanic's grey work shirt with rolled-up sleeves",
+      "a retro-stripe rugby shirt",
+      "a washed-out navy crewneck sweatshirt",
+      "a short-sleeve linen shirt in earth tones",
+      "a vintage racing team jacket",
+      "a plain white tee tucked loosely into cargo pants"
+    ],
+    "settings": [
+      "at a classic car workshop with tools and parts scattered around",
+      "leaning against a vintage 90s car in a parking lot",
+      "at a roadside warung kopi with a glass of black coffee",
+      "in a pasar loak (flea market) among old spare parts",
+      "on a motorcycle on a quiet backroad",
+      "inside an old garage with dim lighting and a project bike",
+      "at a car meetup surrounded by classic vehicles",
+      "behind the wheel of a 90s-era Indonesian car",
+      "at a workshop bench with an engine part in hand",
+      "at a collector's garage examining rare components"
+    ],
+    "poses": [
+      "leaning against a car hood with arms crossed, relaxed smile",
+      "crouching next to a motorcycle inspecting the engine",
+      "holding a rare spare part up to the camera",
+      "mid-laugh with a mechanic friend at the workshop",
+      "sitting on a motorcycle seat with coffee in hand",
+      "pointing at a detail on a classic car with enthusiasm",
+      "a casual selfie in workshop gear",
+      "standing with one foot on a car bumper, arm resting on the roof",
+      "examining an old carburator at a workbench",
+      "walking through a flea market holding a found part"
+    ]
+  },
+  "reference_images": [
+    "gani_01.jpeg",
+    "gani_02.jpeg",
+    "gani_03.jpeg",
+    "gani_04.jpeg",
+    "gani_05.jpeg",
+    "gani_06.jpeg"
+  ],
+  "reference_kind": "preserve"
+}

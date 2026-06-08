@@ -160,13 +160,26 @@ def _extract_data_url(response: dict) -> str:
                 if url:
                     return url
 
-    # Fallback: content may be a plain string with the image embedded as a
-    # markdown image or a bare data/http URL, e.g.
-    # "![image](data:image/png;base64,...)". Gemini via TokenRouter does this.
-    if isinstance(content, str) and content:
-        m = re.search(r"""(data:image/[^)\s"']+|https?://[^)\s"']+)""", content)
-        if m:
-            return m.group(1)
+    # Fallback: content is a string but may contain an embedded image — either
+    # a bare data: URL, a markdown image embed `![alt](data:...)` / `![alt](http...)`,
+    # or a plain http(s) URL the model handed back. Gemini image models on
+    # TokenRouter frequently return the image this way instead of in a structured
+    # `images` field, so without this branch the script would falsely treat the
+    # response as a refusal and retry.
+    if isinstance(content, str):
+        # 1) markdown image embed — most common Gemini-flash shape
+        md = re.search(r"!\[[^\]]*\]\(((?:data:image/[^)\s]+|https?://[^)\s]+))\)", content)
+        if md:
+            return md.group(1)
+        # 2) bare data: URL anywhere in the string
+        bare = re.search(r"(data:image/[\w.+-]+;base64,[A-Za-z0-9+/=\s]+)", content)
+        if bare:
+            # strip whitespace that may be inside the base64 payload
+            return re.sub(r"\s+", "", bare.group(1))
+        # 3) bare http(s) URL pointing to an image file
+        http = re.search(r"https?://\S+\.(?:png|jpg|jpeg|webp)(?:\?\S*)?", content, re.IGNORECASE)
+        if http:
+            return http.group(0)
 
     # No image. If the model explicitly refused, surface that reason; either way
     # this is treated as a (often transient) refusal that generate_image retries.

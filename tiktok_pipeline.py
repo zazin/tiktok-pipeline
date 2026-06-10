@@ -34,6 +34,12 @@ Credentials (read from the environment, depending on which steps run):
                           if the account is not active it reports "wrong_account"
                           and does not post. Omit / empty = post as the currently
                           active account. Pass --account to override.
+  - TIKTOK_ACCOUNT_<PROFILE> (optional) per-profile default, e.g.
+                          TIKTOK_ACCOUNT_GANI=@captgani,
+                          TIKTOK_ACCOUNT_KALILA=@likaliku.skin. When the
+                          pipeline runs with --profile <name>, the matching
+                          TIKTOK_ACCOUNT_<UPPER(name)> wins over the generic
+                          TIKTOK_ACCOUNT. --account always wins over both.
 
 Usage (CLI):
     # Fully automatic: AI idea -> image -> ImageKit -> HiveMQ
@@ -53,7 +59,6 @@ Usage (as a module):
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -199,12 +204,14 @@ def run_pipeline(
     # content. Non-fatal: a broker hiccup is recorded in the result, not raised.
     if to_hivemq:
         try:
-            from hivemq_publisher import publish_post
+            from hivemq_publisher import publish_post, resolve_account
             ik = result["imagekit"]
-            # Resolve Account: explicit `account` param > TIKTOK_ACCOUNT env >
-            # omit. Empty (from any source) is the same as missing per the
-            # agent contract, and we never want to send "Account": "".
-            resolved_account = (account if account is not None else os.getenv("TIKTOK_ACCOUNT") or "").strip()
+            # Resolve Account: --account > TIKTOK_ACCOUNT_<UPPER(profile)>
+            # (when a profile is active) > generic TIKTOK_ACCOUNT > omit.
+            # resolve_account() returns "" for "nothing set"; we never send
+            # "Account": "" (the agent contract treats empty and missing the
+            # same, so omitting is cleaner).
+            resolved_account = resolve_account(explicit=account, profile=profile)
             payload = {
                 "Idea": idea,
                 "Caption": caption_text,

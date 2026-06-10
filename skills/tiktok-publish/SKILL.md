@@ -1,6 +1,6 @@
 ---
 name: tiktok-publish
-description: Publish a finished image to TikTok by uploading it to ImageKit (public CDN URL) and publishing one Status=pending post message to HiveMQ; the downstream tiktok-agent subscribes to the topic and does the actual posting. Use when an agent has an image file ready and wants it queued for TikTok. Requires IMAGEKIT_PRIVATE_KEY and (unless --no-hivemq) HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD. Optional TIKTOK_ACCOUNT / --account @handle tells the agent which TikTok account to switch to before posting.
+description: Publish a finished image to TikTok by uploading it to ImageKit (public CDN URL) and publishing one Status=pending post message to HiveMQ; the downstream tiktok-agent subscribes to the topic and does the actual posting. Use when an agent has an image file ready and wants it queued for TikTok. Requires IMAGEKIT_PRIVATE_KEY and (unless --no-hivemq) HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD. Optional TIKTOK_ACCOUNT_<PROFILE> per-profile env var (e.g. TIKTOK_ACCOUNT_GANI=@captgani) plus a generic TIKTOK_ACCOUNT fallback, with --account @handle as the per-run override, tell the agent which TikTok account to switch to before posting.
 ---
 
 # TikTok Publish (ImageKit + HiveMQ)
@@ -18,12 +18,15 @@ content. Pairs with the `tiktok-image` skill (which only generates the local ima
   needed with `--no-hivemq`). Optional: `HIVEMQ_PORT` (default 8883), `HIVEMQ_TOPIC`
   (default `tiktok/posts`), `HIVEMQ_CLIENT_ID`. The publish is best-effort — a
   failure is reported (and the CLI exits non-zero) but the image still uploads.
-- `TIKTOK_ACCOUNT` (optional) — TikTok `@handle` (e.g. `@captgani`) added to the
-  published post as the `Account` field. The downstream tiktok-agent switches to
-  this account via the in-app switcher **before** posting; if the account is not
-  active it reports `wrong_account` and does **not** post. Omit / empty = post as
-  the currently-active account. `--account` overrides this env var. See the
-  contract: tiktok-agent `docs/post-image.md`.
+- `TIKTOK_ACCOUNT_<PROFILE>` (optional, per-profile) — TikTok `@handle` added to
+  the published post as the `Account` field when the pipeline runs with
+  `--profile <name>`. `<PROFILE>` is the profile folder name uppercased. The
+  per-profile var wins over the generic `TIKTOK_ACCOUNT`; `--account` wins
+  over both. The downstream tiktok-agent switches to this account via the
+  in-app switcher **before** posting; if the account is not active it reports
+  `wrong_account` and does **not** post. Omit / empty = post as the
+  currently-active account. See the contract: tiktok-agent
+  `docs/post-image.md`.
 - Credentials come from the real environment or a `.env` in the cwd (or next to the
   script); real env vars win over `.env`.
 - `uv` recommended — the inline PEP 723 header auto-installs `requests` + `paho-mqtt`.
@@ -46,9 +49,14 @@ Without `uv`: `pip install requests paho-mqtt` then `python3 scripts/tiktok_publ
 - `--folder PATH` — ImageKit destination folder (default `/tiktok`).
 - `--idea TEXT` — post `Idea` field (primary).
 - `--caption TEXT`, `--description TEXT` — post `Caption` / `Description`.
-- `--profile NAME` — post `Profile` field.
-- `--account HANDLE` — post `Account` field (e.g. `@captgani`); default is
-  `TIKTOK_ACCOUNT` env var, else omitted. The agent switches to this account
+- `--profile NAME` — post `Profile` field. Also triggers the
+  `TIKTOK_ACCOUNT_<UPPER(NAME)>` env-var lookup for the `Account` field when
+  `--account` is not set. The profile itself is not loaded by this script
+  (use the `tiktok-pipeline` skill to do generation + publish with the full
+  profile).
+- `--account HANDLE` — post `Account` field (e.g. `@captgani`); default
+  resolution: `TIKTOK_ACCOUNT_<UPPER(--profile)>` (when `--profile` is set)
+  → `TIKTOK_ACCOUNT` env var → omitted. The agent switches to this account
   before posting.
 - `--status VALUE` — post `Status` field (default `pending`).
 - `--unique` — let ImageKit append a random suffix to the file name. Off by

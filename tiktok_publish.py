@@ -12,12 +12,18 @@ subscribes to that topic and does the actual TikTok posting — so this is the
 Credentials are read from the environment (or a local .env):
   - IMAGEKIT_PRIVATE_KEY                              (ImageKit upload)
   - HIVEMQ_HOST / HIVEMQ_USERNAME / HIVEMQ_PASSWORD   (HiveMQ publish)
-  - TIKTOK_ACCOUNT                                    (optional) TikTok @handle to
-                                                      include as the "Account" field
-                                                      in the published post. The
-                                                      agent switches to it before
-                                                      posting. See tiktok-agent
-                                                      docs/post-image.md.
+  - TIKTOK_ACCOUNT                                    (optional) Generic fallback
+                                                      TikTok @handle for the
+                                                      "Account" field.
+  - TIKTOK_ACCOUNT_<PROFILE>                          (optional) Per-profile
+                                                      default (e.g.
+                                                      TIKTOK_ACCOUNT_GANI,
+                                                      TIKTOK_ACCOUNT_KALILA).
+                                                      When --profile <name> is
+                                                      set, the matching
+                                                      TIKTOK_ACCOUNT_<UPPER()>
+                                                      wins. --account wins
+                                                      over both.
 
 Usage (CLI):
     python tiktok_publish.py ./tiktok_output/x.png --idea "a cat in red boots" \
@@ -67,13 +73,18 @@ def upload_and_publish(
         idea: Post idea (primary field).
         caption: Post caption.
         description: Post description.
-        profile: Profile name.
+        profile: Profile folder name (e.g. "kalila", "gani"). Used only for the
+            ``TIKTOK_ACCOUNT_<UPPER(profile)>`` env-var lookup — the profile
+            itself is NOT loaded here (this step has no use for persona or
+            reference images). The matching TIKTOK_ACCOUNT_<UPPER()> wins over
+            the generic TIKTOK_ACCOUNT when both are set.
         account: TikTok @handle (e.g. "@captgani") to include as the "Account"
-            field. The downstream tiktok-agent switches to this account in-app
-            before posting; if it can't be made active, the agent reports
-            "wrong_account" and does not post. If None, falls back to the
-            TIKTOK_ACCOUNT env var. Omit / None / empty = do not include the
-            field (the agent posts as the currently-active account).
+            field. Wins over both the per-profile and the generic TIKTOK_ACCOUNT
+            env vars. The downstream tiktok-agent switches to this account
+            in-app before posting; if it can't be made active, the agent
+            reports "wrong_account" and does not post. Omit / None / empty = do
+            not include the field (the agent posts as the currently-active
+            account).
         status: Post status (default "pending").
         unique_file_name: When False (default), the file keeps its exact name on
             ImageKit (generated names are already timestamped/unique, so this gives
@@ -99,11 +110,11 @@ def upload_and_publish(
     result = {"imagekit": up, "hivemq": None}
 
     if to_hivemq:
-        # Resolve the Account: explicit param > TIKTOK_ACCOUNT env > omit. An
-        # empty value (whether from the param or env) is treated the same as
-        # omission — the agent contract treats empty and missing identically,
-        # and we never want to send "Account": "".
-        resolved_account = (account if account is not None else os.getenv("TIKTOK_ACCOUNT") or "").strip()
+        # Resolve Account: --account > TIKTOK_ACCOUNT_<UPPER(profile)> (when
+        # --profile is set) > generic TIKTOK_ACCOUNT > omit. An empty value from
+        # any source is treated the same as missing — we never send "Account": "".
+        from hivemq_publisher import publish_post, resolve_account
+        resolved_account = resolve_account(explicit=account, profile=profile)
         field_map = {
             "Idea": idea,
             "Caption": caption,
@@ -120,7 +131,6 @@ def upload_and_publish(
         # Only send fields that have a value (besides Status, which defaults).
         payload = {k: v for k, v in field_map.items() if v is not None}
         try:
-            from hivemq_publisher import publish_post
             result["hivemq"] = publish_post(payload)
         except Exception as e:  # HiveMQError or import error — non-fatal
             result["hivemq"] = {"status": "failed", "error": str(e)}
@@ -141,8 +151,8 @@ def _cli() -> int:
     parser.add_argument("--idea", default=None, help="Post idea (primary field)")
     parser.add_argument("--caption", default=None, help="Post caption")
     parser.add_argument("--description", default=None, help="Post description")
-    parser.add_argument("--profile", default=None, help="Profile name")
-    parser.add_argument("--account", default=None, help="TikTok @handle (e.g. @captgani) — agent switches account before posting. Default: TIKTOK_ACCOUNT env var, else omitted.")
+    parser.add_argument("--profile", default=None, help="Profile folder name (e.g. kalila, gani) — used to look up TIKTOK_ACCOUNT_<UPPER()> for the Account field. Profile itself is not loaded here.")
+    parser.add_argument("--account", default=None, help="TikTok @handle (e.g. @captgani) — agent switches account before posting. Default: TIKTOK_ACCOUNT_<PROFILE> (when --profile), else TIKTOK_ACCOUNT, else omitted.")
     parser.add_argument("--status", default="pending", help="Post status (default: pending)")
     parser.add_argument("--unique", action="store_true", help="Let ImageKit append a random suffix to the file name (off by default — names are kept clean/exact)")
     parser.add_argument("--no-hivemq", action="store_true", help="Only upload to ImageKit; skip the HiveMQ publish")

@@ -80,6 +80,8 @@ Optional:
 - `HIVEMQ_TOPIC` — topic to publish to. Defaults to `tiktok/posts` when unset (`DEFAULT_TOPIC` in `hivemq_publisher.py`).
 - `HIVEMQ_COMMENT_TOPIC` — topic for the comment-on-a-post tool. Defaults to `tiktok/comments` when unset (`DEFAULT_COMMENT_TOPIC` in `hivemq_publisher.py`).
 - `HIVEMQ_CLIENT_ID` — MQTT client id for `publish_post`. Defaults to empty (broker assigns one) when unset. `publish_comment` ignores it and always uses a broker-assigned id, so the comment publisher can never collide with the agent's own client ids (which would disconnect the agent).
+- `TIKTOK_ACCOUNT` — optional, generic fallback for the `Account` field on every published post (a TikTok `@handle`, e.g. `@captgani`). The downstream tiktok-agent switches to it before posting; if the account is not active it reports `wrong_account` and does not post (see tiktok-agent `docs/post-image.md`).
+- `TIKTOK_ACCOUNT_<PROFILE>` — optional, per-profile default. `<PROFILE>` is the profile folder name uppercased (e.g. `TIKTOK_ACCOUNT_GANI`, `TIKTOK_ACCOUNT_KALILA`). When the pipeline runs with `--profile <name>`, the matching `TIKTOK_ACCOUNT_<UPPER(name)>` wins over the generic `TIKTOK_ACCOUNT`; `--account` on the CLI wins over both. Example: `TIKTOK_ACCOUNT_GANI=@captgani`.
 
 A local `.env` is loaded automatically: every module's `_cli()` calls `env_loader.load_env()` (a zero-dependency loader in `env_loader.py`) before parsing args, so you don't need to `source .env`. Real environment variables take precedence over `.env` values (`override=False`); the loader looks for `.env` next to the module first, then the cwd. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.
 

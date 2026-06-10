@@ -29,6 +29,15 @@ Credentials / target are read from environment variables:
                            always uses a broker-assigned id, so it can never collide
                            with the agent's own client ids (e.g. "tiktok-commenter"),
                            which would otherwise disconnect the agent.
+  - TIKTOK_ACCOUNT       — optional. TikTok @handle (e.g. "@captgani") to add to
+                           every published post as the "Account" field. The
+                           downstream tiktok-agent switches to this account via its
+                           in-app switcher BEFORE posting; if the account is not
+                           active it reports "wrong_account" and does not post. See
+                           tiktok-agent docs/post-image.md. Omit to let the agent
+                           post as whatever account is currently active. Explicit
+                           "Account" in the payload (or --account on the CLI) wins
+                           over this env var.
 
 Usage (CLI):
     python hivemq_publisher.py --idea "a cat in red boots" --caption "..." \
@@ -122,6 +131,13 @@ def _get_client_id() -> str:
     return os.getenv("HIVEMQ_CLIENT_ID") or ""
 
 
+def _get_account() -> str:
+    # Optional. The agent treats an empty/missing "Account" the same (omitted =
+    # post as current account), so we strip whitespace and return "" when unset.
+    # Caller decides whether to include the field at all — we never inject "".
+    return (os.getenv("TIKTOK_ACCOUNT") or "").strip()
+
+
 def publish_post(
     payload: dict,
     *,
@@ -136,6 +152,8 @@ def publish_post(
         payload: Mapping serialized to a JSON message body. A unique "id"
             (the agent's required correlation key) and a "CreatedAt" ISO-8601 UTC
             timestamp are added automatically unless the caller supplies them.
+            If the payload has no "Account" key, ``TIKTOK_ACCOUNT`` is injected
+            (only when set) so callers don't have to thread it through.
         topic: Override HIVEMQ_TOPIC.
         qos: MQTT quality of service (default 1, at-least-once).
         timeout: Seconds to wait for the broker to acknowledge the publish.
@@ -154,6 +172,13 @@ def publish_post(
     payload = dict(payload)
     payload.setdefault("id", uuid.uuid4().hex)
     payload.setdefault("CreatedAt", datetime.now(timezone.utc).isoformat())
+    # Inject the default Account from TIKTOK_ACCOUNT when the caller didn't
+    # supply one. Only inject a non-empty value — an empty "Account" would be
+    # ambiguous vs. an omitted field, and the contract treats them the same.
+    if "Account" not in payload:
+        default_account = _get_account()
+        if default_account:
+            payload["Account"] = default_account
 
     return _publish_json(payload, topic, qos=qos, timeout=timeout)
 
@@ -266,6 +291,7 @@ def _cli() -> int:
     parser.add_argument("--file-id", default=None, help="ImageKit file id")
     parser.add_argument("--image-path", default=None, help="Image filename incl. ext (e.g. tiktok_20260604_230055.jpeg)")
     parser.add_argument("--profile", default=None, help="Profile name")
+    parser.add_argument("--account", default=None, help="TikTok @handle (e.g. @captgani) — agent switches account before posting. Default: TIKTOK_ACCOUNT env var, else omitted.")
     parser.add_argument("--status", default="pending", help="Status (default: pending)")
     parser.add_argument("--topic", default=None, help="MQTT topic (default: HIVEMQ_TOPIC or tiktok/posts)")
     parser.add_argument("--json", action="store_true", help="Print the full publish-result JSON")
@@ -280,6 +306,7 @@ def _cli() -> int:
         "ImageKitFileId": args.file_id,
         "ImagePath": args.image_path,
         "Profile": args.profile,
+        "Account": args.account,
         "Status": args.status,
     }
     payload = {k: v for k, v in field_map.items() if v is not None}

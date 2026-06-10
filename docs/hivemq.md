@@ -23,6 +23,7 @@ The pipeline connects to HiveMQ Cloud over TLS.
 | `HIVEMQ_PORT` | TLS port. Optional; defaults to `8883`. |
 | `HIVEMQ_TOPIC` | Topic to publish to. Optional; defaults to `tiktok/posts`. |
 | `HIVEMQ_CLIENT_ID` | Publisher MQTT client id. Optional; the broker assigns one when unset. |
+| `TIKTOK_ACCOUNT` | Optional. TikTok `@handle` (e.g. `@captgani`) to include in every published post as the `Account` field. The agent switches to it before posting; if the account is not active it reports `wrong_account` and does not post. Omit / empty to post as the currently-active account. Explicit `--account` on the CLI wins over this var. |
 
 - **Transport:** MQTT over TLS (system CA certs — HiveMQ Cloud uses a public CA).
 - **QoS:** 1 (at-least-once). The publisher waits for the broker `PUBACK` before disconnecting.
@@ -42,12 +43,16 @@ The body is JSON (UTF-8):
   "ImageKitFileId": "660f...",
   "ImagePath": "tiktok_20260604_230055.jpeg",
   "Profile": "kalila",
+  "Account": "@captgani",
   "Status": "pending",
   "CreatedAt": "2026-06-07T10:15:30.123456+00:00"
 }
 ```
 
 Only fields with a value are included (besides `Status`, which defaults to `pending`).
+`Account` is optional — include it (via the `TIKTOK_ACCOUNT` env var, the
+`--account` CLI flag, or directly in a programmatic payload) to tell the
+downstream `tiktok-agent` which TikTok account to switch to before posting.
 `CreatedAt` is an ISO-8601 UTC timestamp stamped at publish time unless the caller supplies one.
 `ImageKitFileId` / `ImagePath` uniquely identify the post for de-duplication on the agent side.
 

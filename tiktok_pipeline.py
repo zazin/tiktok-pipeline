@@ -28,6 +28,12 @@ Credentials (read from the environment, depending on which steps run):
   - HIVEMQ_HOST           (HiveMQ push, unless --no-hivemq)
   - HIVEMQ_USERNAME       (HiveMQ push, unless --no-hivemq)
   - HIVEMQ_PASSWORD       (HiveMQ push, unless --no-hivemq)
+  - TIKTOK_ACCOUNT        (optional) TikTok @handle (e.g. "@captgani") to add
+                          to the published post as the "Account" field. The
+                          downstream tiktok-agent switches to it before posting;
+                          if the account is not active it reports "wrong_account"
+                          and does not post. Omit / empty = post as the currently
+                          active account. Pass --account to override.
 
 Usage (CLI):
     # Fully automatic: AI idea -> image -> ImageKit -> HiveMQ
@@ -47,6 +53,7 @@ Usage (as a module):
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -75,6 +82,7 @@ def run_pipeline(
     to_imagekit: bool = True,
     imagekit_folder: str = "/tiktok",
     to_hivemq: bool = True,
+    account: Optional[str] = None,
 ) -> dict:
     """
     Run the full generate → upload → publish pipeline for a single image.
@@ -193,6 +201,10 @@ def run_pipeline(
         try:
             from hivemq_publisher import publish_post
             ik = result["imagekit"]
+            # Resolve Account: explicit `account` param > TIKTOK_ACCOUNT env >
+            # omit. Empty (from any source) is the same as missing per the
+            # agent contract, and we never want to send "Account": "".
+            resolved_account = (account if account is not None else os.getenv("TIKTOK_ACCOUNT") or "").strip()
             payload = {
                 "Idea": idea,
                 "Caption": caption_text,
@@ -201,6 +213,7 @@ def run_pipeline(
                 "ImageKitFileId": ik.get("file_id", "") if ik["status"] == "success" else "",
                 "ImagePath": path.name,  # filename + ext only, e.g. tiktok_20260604_230055.jpeg
                 "Profile": profile or "",
+                "Account": resolved_account or "",
                 "Status": "pending",
             }
             pub = publish_post(payload)
@@ -239,6 +252,7 @@ def _cli() -> int:
     parser.add_argument("--profile", default=None, help="Profile name (profiles/<name>/): uses its persona + reference images")
     parser.add_argument("--profiles-dir", default=None, help="Profiles root folder (default: profiles/)")
     parser.add_argument("--seed", type=int, default=None, help="Seed the random outfit/setting/pose pick (reproducible look); omit for fresh variety")
+    parser.add_argument("--account", default=None, help="TikTok @handle (e.g. @captgani) — agent switches account before posting. Default: TIKTOK_ACCOUNT env var, else omitted.")
     # Upload: ImageKit
     parser.add_argument("--no-imagekit", action="store_true", help="Skip uploading to ImageKit")
     parser.add_argument("--folder", default="/tiktok", help="ImageKit folder (default: /tiktok)")
@@ -269,6 +283,7 @@ def _cli() -> int:
             to_imagekit=not args.no_imagekit,
             imagekit_folder=args.folder,
             to_hivemq=not args.no_hivemq,
+            account=args.account,
         )
     except Exception as e:
         # Fatal: idea / image-generation failure.

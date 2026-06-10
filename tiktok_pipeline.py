@@ -33,13 +33,10 @@ Credentials (read from the environment, depending on which steps run):
                           downstream tiktok-agent switches to it before posting;
                           if the account is not active it reports "wrong_account"
                           and does not post. Omit / empty = post as the currently
-                          active account. Pass --account to override.
-  - TIKTOK_ACCOUNT_<PROFILE> (optional) per-profile default, e.g.
-                          TIKTOK_ACCOUNT_GANI=@captgani,
-                          TIKTOK_ACCOUNT_KALILA=@likaliku.skin. When the
-                          pipeline runs with --profile <name>, the matching
-                          TIKTOK_ACCOUNT_<UPPER(name)> wins over the generic
-                          TIKTOK_ACCOUNT. --account always wins over both.
+                          active account. Pass --account to override. Set
+                          per-run (e.g. `TIKTOK_ACCOUNT=@captgani uv run
+                          tiktok-pipeline --profile gani ...`) since this repo
+                          only supports one value at a time.
 
 Usage (CLI):
     # Fully automatic: AI idea -> image -> ImageKit -> HiveMQ
@@ -206,12 +203,13 @@ def run_pipeline(
         try:
             from hivemq_publisher import publish_post, resolve_account
             ik = result["imagekit"]
-            # Resolve Account: --account > TIKTOK_ACCOUNT_<UPPER(profile)>
-            # (when a profile is active) > generic TIKTOK_ACCOUNT > omit.
+            # Resolve Account: --account > TIKTOK_ACCOUNT env > omit.
             # resolve_account() returns "" for "nothing set"; we never send
             # "Account": "" (the agent contract treats empty and missing the
-            # same, so omitting is cleaner).
-            resolved_account = resolve_account(explicit=account, profile=profile)
+            # same, so omitting is cleaner). The caller is expected to set
+            # TIKTOK_ACCOUNT appropriately for the active profile (e.g.
+            # `TIKTOK_ACCOUNT=@captgani uv run tiktok-pipeline --profile gani ...`).
+            resolved_account = resolve_account(explicit=account)
             payload = {
                 "Idea": idea,
                 "Caption": caption_text,

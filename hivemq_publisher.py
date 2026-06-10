@@ -29,26 +29,20 @@ Credentials / target are read from environment variables:
                            always uses a broker-assigned id, so it can never collide
                            with the agent's own client ids (e.g. "tiktok-commenter"),
                            which would otherwise disconnect the agent.
-  - TIKTOK_ACCOUNT       — optional. Generic fallback for the "Account" field
-                           on every published post (a TikTok @handle, e.g.
-                           "@captgani"). The downstream tiktok-agent switches
-                           to this account via its in-app switcher BEFORE
-                           posting; if the account is not active it reports
-                           "wrong_account" and does not post. See tiktok-agent
+  - TIKTOK_ACCOUNT       — optional. TikTok @handle (e.g. "@captgani") to add to
+                           every published post as the "Account" field. The
+                           downstream tiktok-agent switches to this account
+                           via its in-app switcher BEFORE posting; if the
+                           account is not active it reports "wrong_account"
+                           and does not post. See tiktok-agent
                            docs/post-image.md. Omit to let the agent post as
-                           whatever account is currently active. Per-profile
-                           defaults (see TIKTOK_ACCOUNT_<PROFILE> below) take
-                           precedence when a profile is active. Explicit
+                           whatever account is currently active. Set per-run
+                           (e.g. `TIKTOK_ACCOUNT=@captgani uv run
+                           tiktok-pipeline --profile gani ...`) since this
+                           repo only supports one value at a time. Explicit
                            "Account" in the payload (or --account on the CLI)
-                           wins over both. NEVER set to "" — empty == omit.
-  - TIKTOK_ACCOUNT_<PROFILE> — optional per-profile default, where <PROFILE>
-                           is the profile folder name uppercased (e.g.
-                           TIKTOK_ACCOUNT_GANI, TIKTOK_ACCOUNT_KALILA). When
-                           the pipeline runs with --profile <name>, the
-                           matching TIKTOK_ACCOUNT_<UPPER(name)> is used as
-                           the "Account" field. The generic TIKTOK_ACCOUNT
-                           still works as a fallback. Example:
-                           TIKTOK_ACCOUNT_GANI=@captgani
+                           wins over this env var. NEVER set to "" — empty
+                           == omit.
 
 Usage (CLI):
     python hivemq_publisher.py --idea "a cat in red boots" --caption "..." \
@@ -149,14 +143,13 @@ def _get_account() -> str:
     return (os.getenv("TIKTOK_ACCOUNT") or "").strip()
 
 
-def resolve_account(*, explicit: Optional[str] = None, profile: Optional[str] = None) -> str:
+def resolve_account(*, explicit: Optional[str] = None) -> str:
     """
     Resolve the TikTok @handle to include as the "Account" field on a published post.
 
     Lookup order (first non-empty wins):
       1. ``explicit`` (e.g. from ``--account`` on the CLI)
-      2. ``TIKTOK_ACCOUNT_<UPPER(profile)>`` env var (per-profile default)
-      3. ``TIKTOK_ACCOUNT`` env var (generic default)
+      2. ``TIKTOK_ACCOUNT`` env var
 
     Returns the empty string when nothing is set; callers must treat "" as
     "omit the Account field entirely" (the agent contract treats empty and
@@ -165,17 +158,10 @@ def resolve_account(*, explicit: Optional[str] = None, profile: Optional[str] = 
     Args:
         explicit: Caller-supplied handle (e.g. CLI --account). Leading/trailing
             whitespace is stripped; an empty / whitespace-only value is treated
-            as "not supplied" and falls through to the env vars.
-        profile: Active profile folder name (e.g. "kalila", "gani"). Used to
-            look up ``TIKTOK_ACCOUNT_<UPPER(profile)>``. ``None`` / empty
-            skips the per-profile lookup.
+            as "not supplied" and falls through to the env var.
     """
     if explicit is not None and explicit.strip():
         return explicit.strip()
-    if profile:
-        per_profile = os.getenv(f"TIKTOK_ACCOUNT_{profile.strip().upper()}", "")
-        if per_profile.strip():
-            return per_profile.strip()
     return _get_account()
 
 

@@ -23,8 +23,7 @@ The pipeline connects to HiveMQ Cloud over TLS.
 | `HIVEMQ_PORT` | TLS port. Optional; defaults to `8883`. |
 | `HIVEMQ_TOPIC` | Topic to publish to. Optional; defaults to `tiktok/posts`. |
 | `HIVEMQ_CLIENT_ID` | Publisher MQTT client id. Optional; the broker assigns one when unset. |
-| `TIKTOK_ACCOUNT` | Optional. Generic fallback for the `Account` field on every published post (a TikTok `@handle`, e.g. `@captgani`). The agent switches to it before posting; if the account is not active it reports `wrong_account` and does not post. Omit / empty to post as the currently-active account. Per-profile defaults (below) take precedence when a profile is active. Explicit `--account` on the CLI wins over both. |
-| `TIKTOK_ACCOUNT_<PROFILE>` | Optional per-profile default, where `<PROFILE>` is the profile folder name uppercased (e.g. `TIKTOK_ACCOUNT_GANI`, `TIKTOK_ACCOUNT_KALILA`). When the pipeline runs with `--profile <name>`, the matching `TIKTOK_ACCOUNT_<UPPER(name)>` is used as the `Account` field. Wins over the generic `TIKTOK_ACCOUNT`. Example: `TIKTOK_ACCOUNT_GANI=@captgani`. |
+| `TIKTOK_ACCOUNT` | Optional. TikTok `@handle` (e.g. `@captgani`) to include in every published post as the `Account` field. The agent switches to it before posting; if the account is not active it reports `wrong_account` and does not post. Omit / empty to post as the currently-active account. Explicit `--account` on the CLI wins over this var. Set per-run (e.g. `TIKTOK_ACCOUNT=@captgani uv run tiktok-pipeline --profile gani ...`) since this repo only supports one value at a time. |
 
 - **Transport:** MQTT over TLS (system CA certs — HiveMQ Cloud uses a public CA).
 - **QoS:** 1 (at-least-once). The publisher waits for the broker `PUBACK` before disconnecting.
@@ -51,8 +50,7 @@ The body is JSON (UTF-8):
 ```
 
 Only fields with a value are included (besides `Status`, which defaults to `pending`).
-`Account` is optional — include it (via the `TIKTOK_ACCOUNT_<PROFILE>` env var when
-running with `--profile <name>`, the generic `TIKTOK_ACCOUNT` env var, the
+`Account` is optional — include it (via the `TIKTOK_ACCOUNT` env var, the
 `--account` CLI flag, or directly in a programmatic payload) to tell the
 downstream `tiktok-agent` which TikTok account to switch to before posting.
 `CreatedAt` is an ISO-8601 UTC timestamp stamped at publish time unless the caller supplies one.

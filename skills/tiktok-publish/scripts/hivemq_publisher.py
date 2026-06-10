@@ -18,17 +18,21 @@ clean_session=false) so it still receives a backlog after a brief disconnect —
 is the subscriber's concern.
 
 Credentials / target are read from environment variables:
-  - HIVEMQ_HOST          — broker host, e.g. "xxxx.s1.eu.hivemq.cloud" (required)
-  - HIVEMQ_USERNAME      — broker username (required)
-  - HIVEMQ_PASSWORD      — broker password (required)
-  - HIVEMQ_PORT          — TLS port. Optional; defaults to 8883.
-  - HIVEMQ_TOPIC         — post topic. Optional; defaults to "tiktok/posts".
-  - HIVEMQ_COMMENT_TOPIC — comment topic. Optional; defaults to "tiktok/comments".
-  - HIVEMQ_CLIENT_ID     — MQTT client id for publish_post. Optional; the broker
-                           assigns one when unset. publish_comment ignores this and
-                           always uses a broker-assigned id, so it can never collide
-                           with the agent's own client ids (e.g. "tiktok-commenter"),
-                           which would otherwise disconnect the agent.
+  - HIVEMQ_HOST                    — broker host, e.g. "xxxx.s1.eu.hivemq.cloud" (required)
+  - HIVEMQ_USERNAME                — broker username (required)
+  - HIVEMQ_PASSWORD                — broker password (required)
+  - HIVEMQ_PORT                    — TLS port. Optional; defaults to 8883.
+  - HIVEMQ_TOPIC                   — post topic. Optional; defaults to "tiktok/posts".
+  - HIVEMQ_COMMENT_TOPIC           — comment topic. Optional; defaults to "tiktok/comments".
+  - HIVEMQ_COMMENT_READ_TOPIC      — read-job topic. Optional; defaults to "tiktok/comments-read".
+  - HIVEMQ_COMMENT_LIST_TOPIC      — comment-list topic. Optional; defaults to "tiktok/comments-list".
+  - HIVEMQ_CLIENT_ID               — MQTT client id for publish_post. Optional; the broker
+                                     assigns one when unset. publish_comment, publish_comment_read,
+                                     and read_comment_list all force a per-run client id (so the
+                                     backend can never collide with the agent's "tiktok-agent",
+                                     the commenter's "tiktok-commenter", or the reader's
+                                     "tiktok-comment-reader" — any of which would disconnect the
+                                     peer). HIVEMQ_CLIENT_ID is only honoured by publish_post.
   - TIKTOK_ACCOUNT       — optional. TikTok @handle (e.g. "@captgani") to add to
                            every published post as the "Account" field. The
                            downstream tiktok-agent switches to this account
@@ -63,6 +67,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -74,6 +79,8 @@ import paho.mqtt.client as mqtt
 DEFAULT_PORT = 8883
 DEFAULT_TOPIC = "tiktok/posts"
 DEFAULT_COMMENT_TOPIC = "tiktok/comments"
+DEFAULT_COMMENT_READ_TOPIC = "tiktok/comments-read"
+DEFAULT_COMMENT_LIST_TOPIC = "tiktok/comments-list"
 
 
 class HiveMQError(Exception):
@@ -129,6 +136,16 @@ def _get_topic(topic: Optional[str] = None) -> str:
 def _get_comment_topic(topic: Optional[str] = None) -> str:
     # Optional: falls back to DEFAULT_COMMENT_TOPIC ("tiktok/comments") when unset.
     return topic or os.getenv("HIVEMQ_COMMENT_TOPIC") or DEFAULT_COMMENT_TOPIC
+
+
+def _get_comment_read_topic(topic: Optional[str] = None) -> str:
+    # Optional: falls back to DEFAULT_COMMENT_READ_TOPIC ("tiktok/comments-read") when unset.
+    return topic or os.getenv("HIVEMQ_COMMENT_READ_TOPIC") or DEFAULT_COMMENT_READ_TOPIC
+
+
+def _get_comment_list_topic(topic: Optional[str] = None) -> str:
+    # Optional: falls back to DEFAULT_COMMENT_LIST_TOPIC ("tiktok/comments-list") when unset.
+    return topic or os.getenv("HIVEMQ_COMMENT_LIST_TOPIC") or DEFAULT_COMMENT_LIST_TOPIC
 
 
 def _get_client_id() -> str:
@@ -214,6 +231,8 @@ def publish_comment(
     post_url: str,
     comment: str,
     *,
+    account: Optional[str] = None,
+    reply_to: Optional[dict] = None,
     topic: Optional[str] = None,
     qos: int = 1,
     timeout: int = 10,
@@ -221,26 +240,42 @@ def publish_comment(
     """
     Publish a single "comment on a post" message to HiveMQ over a TLS connection.
 
-    Per the tiktok-agent contract (docs/comment-on-post.md) the message carries
-    exactly two fields — ``PostURL`` and ``Comment`` — and deliberately NO ``id``
-    and NO ``CreatedAt`` (the agent acks via the MQTT message id and keys status by
-    ``PostURL``). Both fields must be non-empty or the agent drops the message, so
-    they are validated here.
+    Per the tiktok-agent contract (docs/comment-on-post.md) the base message carries
+    ``PostURL`` + ``Comment``. Two optional fields extend it:
+
+    - ``Account`` — when set, the agent switches to this TikTok account in-app
+      *before* opening the post; if the account can't be made active it reports
+      ``wrong_account`` and does not comment. Resolved via ``resolve_account``:
+      explicit ``account`` argument wins, else ``TIKTOK_ACCOUNT`` env var, else
+      the field is omitted (treat empty and missing identically — never send
+      ``"Account": ""``).
+    - ``ReplyTo`` — when set, the comment is submitted as a *reply to* an
+      existing top-level comment on the post. Must be a dict carrying a
+      non-empty ``author`` (the ``author`` value from a ``comments-list``
+      message); an optional ``text`` substring disambiguates when the same
+      author has several comments. Omit for a normal top-level comment.
+
+    The agent acks via the MQTT message id and keys status by ``PostURL`` —
+    messages deliberately carry NO ``id`` and NO ``CreatedAt``.
 
     Args:
         post_url: Full TikTok post URL (the comment target / correlation key).
         comment: Exact comment text to submit. The agent types it via ``adb input
             text``, which cannot enter emoji / non-ASCII — keep it ASCII.
+        account: TikTok @handle (e.g. ``@captgani``). Explicit value wins over
+            ``TIKTOK_ACCOUNT`` env var.
+        reply_to: Optional dict ``{"author": <@handle>, "text"?: <substring>}``
+            to make the comment a reply to an existing top-level comment.
         topic: Override HIVEMQ_COMMENT_TOPIC.
         qos: MQTT quality of service (default 1, at-least-once).
         timeout: Seconds to wait for the broker to acknowledge the publish.
 
     Returns:
-        {"status": "success", "topic": <topic>, "mid": <message id>}.
+        ``{"status": "success", "topic": <topic>, "mid": <message id>}``.
 
     Raises:
-        HiveMQError: On empty PostURL/Comment, missing creds, connect failure, or
-            publish timeout.
+        HiveMQError: On empty ``PostURL``/``Comment``, missing ``reply_to.author``,
+            missing creds, connect failure, or publish timeout.
     """
     post_url = (post_url or "").strip()
     comment = (comment or "").strip()
@@ -252,10 +287,218 @@ def publish_comment(
     # Always let the broker assign the client id for comments (pass empty), so the
     # comment publisher never reuses HIVEMQ_CLIENT_ID and never risks colliding with
     # the agent's own client id (e.g. "tiktok-commenter"), which would disconnect it.
-    payload = {"PostURL": post_url, "Comment": comment}
+    payload: dict = {"PostURL": post_url, "Comment": comment}
+
+    # Optional Account — resolved via the same chain the post publisher uses, so
+    # `--account` and `TIKTOK_ACCOUNT` "just work" for comments too. Empty result
+    # is omitted from the payload (never send `"Account": ""`).
+    resolved_account = resolve_account(explicit=account)
+    if resolved_account:
+        payload["Account"] = resolved_account
+
+    # Optional ReplyTo — validated against the contract: a dict carrying a
+    # non-empty `author` (required) and an optional `text` substring. The agent
+    # reports `comment_not_found` if it can't locate the target in the sheet.
+    if reply_to is not None:
+        if not isinstance(reply_to, dict):
+            raise HiveMQError("reply_to must be a dict {'author': <@handle>, 'text'?: <substring>}")
+        author = (reply_to.get("author") or "").strip()
+        if not author:
+            raise HiveMQError("ReplyTo.author must be non-empty (the agent drops such messages).")
+        rt: dict = {"author": author}
+        raw_text = reply_to.get("text")
+        if raw_text is not None and str(raw_text).strip():
+            rt["text"] = str(raw_text).strip()
+        payload["ReplyTo"] = rt
+
     return _publish_json(
         payload, _get_comment_topic(topic), qos=qos, timeout=timeout, client_id=""
     )
+
+
+def publish_comment_read(
+    post_url: str,
+    *,
+    max_comments: Optional[int] = None,
+    topic: Optional[str] = None,
+    qos: int = 1,
+    timeout: int = 10,
+) -> dict:
+    """
+    Publish a "read this post's comments" job to the read-job topic.
+
+    The downstream **comment-reader** (a separate consumer, client id
+    ``tiktok-comment-reader``) opens the post on the phone, scrapes up to
+    ``max_comments`` top-level comments, and publishes a single
+    ``{PostURL, comments: [...], count, ts}`` message to the comment-list
+    topic (``tiktok/comments-list``). The backend (this repo's
+    ``read_comment_list`` / ``reply_to_comment``) subscribes to that topic and
+    consumes the list.
+
+    Per the tiktok-agent contract (docs/read-comments.md) only ``PostURL`` is
+    required; ``max`` is optional and falls back to the reader's default
+    (``COMMENT_READ_MAX``, default 10).
+
+    Delivery semantics mirror the rest of this module: QoS 1, ``retain=false``,
+    TLS, per-run client id (so the backend can never collide with the reader's
+    fixed client id).
+
+    Args:
+        post_url: Full TikTok post URL whose comments should be scraped.
+        max_comments: Cap on the number of top-level comments the reader
+            scrapes. Omit to use the reader's default.
+        topic: Override ``HIVEMQ_COMMENT_READ_TOPIC``.
+        qos: MQTT quality of service (default 1, at-least-once).
+        timeout: Seconds to wait for the broker to acknowledge the publish.
+
+    Returns:
+        ``{"status": "success", "topic": <topic>, "mid": <message id>}``.
+
+    Raises:
+        HiveMQError: On empty ``PostURL``, non-positive ``max_comments``,
+            missing creds, connect failure, or publish timeout.
+    """
+    post_url = (post_url or "").strip()
+    if not post_url:
+        raise HiveMQError("PostURL must not be empty (the reader drops such jobs).")
+    if max_comments is not None:
+        if not isinstance(max_comments, int) or max_comments < 1:
+            raise HiveMQError(f"max_comments must be a positive integer, got {max_comments!r}")
+
+    payload: dict = {"PostURL": post_url}
+    if max_comments is not None:
+        payload["max"] = max_comments
+
+    return _publish_json(
+        payload, _get_comment_read_topic(topic), qos=qos, timeout=timeout, client_id=""
+    )
+
+
+def read_comment_list(
+    post_url: str,
+    *,
+    timeout: int = 120,
+    topic: Optional[str] = None,
+) -> dict:
+    """
+    Subscribe to the comment-list topic and wait for a message matching ``post_url``.
+
+    Connects a transient QoS-1 subscriber to ``HIVEMQ_COMMENT_LIST_TOPIC``
+    (default ``tiktok/comments-list``), blocks until a message whose ``PostURL``
+    matches the request arrives, then disconnects. The client id is unique
+    per call (``tiktok-reply-<uuid>``) so the backend never collides with the
+    reader's ``tiktok-comment-reader`` or the agent's other consumers.
+
+    This is the **read half** of the comment-reply loop: a backend that wants
+    to generate replies to existing comments publishes a read-job via
+    ``publish_comment_read`` and then calls this to collect the scraped list.
+    The two halves are usually called in sequence from an orchestrator
+    (``reply_to_comment``) but are split here so this function is independently
+    usable for one-off inspection.
+
+    The reader is read-only and idempotent — re-reading a post just
+    re-publishes its current comments, so a transient subscriber is fine
+    (the contract's "use a persistent session" guidance is for backends that
+    want lists buffered across disconnects, not for our request/response flow).
+
+    Args:
+        post_url: The full TikTok post URL the caller published a read-job for.
+            Only matching messages are returned; messages for other posts on the
+            same topic are ignored.
+        timeout: Seconds to wait for a matching response before raising
+            ``HiveMQError``. The reader typically takes 5-30 s to scrape, so the
+            default of 120 s is a generous upper bound.
+        topic: Override ``HIVEMQ_COMMENT_LIST_TOPIC``.
+
+    Returns:
+        The parsed JSON message body, e.g.
+        ``{"PostURL": ..., "comments": [{"author": ..., "text": ...}, ...],
+        "count": N, "ts": <unix epoch>}``. On a read failure the reader sends
+        ``{"comments": [], "count": 0, "error": "needs_manual" | "failed: ...",
+        "ts": ...}`` — the dict is returned as-is so the caller can branch on
+        ``error``.
+
+    Raises:
+        HiveMQError: On empty ``post_url``, missing creds, connect failure,
+            disconnect-without-message, or ``timeout`` exceeded.
+    """
+    post_url = (post_url or "").strip()
+    if not post_url:
+        raise HiveMQError("post_url must not be empty.")
+    if timeout <= 0:
+        raise HiveMQError(f"timeout must be positive, got {timeout}")
+
+    host = _get_host()
+    user = _get_username()
+    pw = _get_password()
+    port = _get_port()
+    list_topic = _get_comment_list_topic(topic)
+
+    result: dict = {"value": None, "error": None}
+    done = threading.Event()
+
+    def _on_message(client, userdata, msg):  # noqa: ANN001
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return  # ignore malformed — a different consumer's message
+        if not isinstance(payload, dict):
+            return
+        if (payload.get("PostURL") or "").strip() == post_url:
+            result["value"] = payload
+            done.set()
+            client.disconnect()
+
+    def _on_connect(client, userdata, flags, rc, properties=None):  # noqa: ANN001
+        if rc == 0:
+            client.subscribe(list_topic, qos=1)
+        else:
+            result["error"] = HiveMQError(f"connect to broker failed rc={rc}")
+            done.set()
+
+    def _on_disconnect(client, userdata, flags, rc, properties=None):  # noqa: ANN001
+        # Only set the error if we haven't already received a matching message
+        # (a clean disconnect after a successful on_message leaves result["value"] set).
+        if not done.is_set() and result["value"] is None:
+            result["error"] = HiveMQError(f"subscriber disconnected rc={rc} before a match arrived")
+            done.set()
+
+    # Per-run client id (uuid suffix) — never reuse a fixed id, so concurrent
+    # orchestrators on different machines each get their own session.
+    client_id = f"tiktok-reply-{uuid.uuid4().hex[:8]}"
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=client_id,
+    )
+    client.username_pw_set(user, pw)
+    client.tls_set()  # system CA certs — HiveMQ Cloud uses a public CA
+    client.on_connect = _on_connect
+    client.on_message = _on_message
+    client.on_disconnect = _on_disconnect
+
+    try:
+        client.connect(host, port, keepalive=60)
+    except (OSError, ValueError) as e:
+        raise HiveMQError(f"Failed to connect to HiveMQ at {host}:{port}: {e}") from e
+
+    client.loop_start()
+    finished = done.wait(timeout=timeout)
+    client.loop_stop()
+    try:
+        client.disconnect()
+    except Exception:
+        pass  # already disconnected / best-effort cleanup
+
+    if not finished:
+        raise HiveMQError(
+            f"Timed out after {timeout}s waiting for comment-list response on {list_topic!r}."
+        )
+    if result["error"] is not None:
+        raise result["error"]
+    if result["value"] is None:
+        # Defensive: shouldn't reach here — `done` only sets after a value or error.
+        raise HiveMQError("Subscriber exited without a message or an error.")
+    return result["value"]
 
 
 def _publish_json(

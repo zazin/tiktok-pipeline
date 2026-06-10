@@ -12,7 +12,9 @@ A CLI pipeline that turns an AI-invented idea into a TikTok-ready 9:16 image, up
 4. `imagekit_uploader.py` — local image → ImageKit upload → public CDN URL
 5. `hivemq_publisher.py` — idea + caption + ImageKit URL + post fields → one MQTT message on a HiveMQ Cloud topic (the pipeline's hand-off to the downstream tiktok-agent, which subscribes and posts the content)
 
-Separately from the image pipeline, the repo also provides a **comment-on-a-post** tool (`comment_generator.py` + `comment_on_post.py`): AI-write a TikTok comment from a sentiment (e.g. positive/negative) and publish a `{PostURL, Comment}` message to the `tiktok/comments` topic. The downstream tiktok-agent opens the post by URL and leaves the comment (contract: tiktok-agent `docs/comment-on-post.md`). This tool never looks at the post itself — context about the post is an optional `--about` text input.
+Separately from the image pipeline, the repo also provides **comment tools** (`comment_generator.py` + `comment_on_post.py` + `reply_to_comment.py`):
+- `tiktok-comment` (`comment_on_post.py`) — leave ONE top-level comment on a post, either AI-written from a sentiment (e.g. positive/negative) or published verbatim, on the `tiktok/comments` topic. The downstream tiktok-agent opens the post by URL and leaves the comment (contract: tiktok-agent `docs/comment-on-post.md`). It also supports one-off **replies** via `--reply-to-author <@handle>` (and optionally `--reply-to-text <substring>`) and the `Account` field via `--account` (or the shared `TIKTOK_ACCOUNT` env var). It never looks at the post itself — context about the post is an optional `--about` text input or an auto-fetch from TikTok oEmbed.
+- `tiktok-reply-comment` (`reply_to_comment.py`) — the **read-then-reply loop**: publishes a read-job to `tiktok/comments-read`, waits for the downstream `tiktok-comment-reader` consumer to publish the scraped top-level comments back on `tiktok/comments-list`, then AI-writes a short reply to each (skipping already-replied comments via a local state file, default `.tiktok-replied.json`), and publishes each as a `tiktok/comments` message with `ReplyTo` set to the original `{author, text}`. Caps the per-run reply count via `--max-replies` (default 5). The read-job + comment-list contracts are tiktok-agent `docs/read-comments.md` and the per-reply `ReplyTo` is per `docs/comment-on-post.md`.
 
 The pipeline's outputs are **the image on ImageKit** and **a HiveMQ message** describing the post. `tiktok_pipeline.py` runs idea → caption → generate → imagekit → hivemq. The ImageKit upload is non-fatal (a failure is recorded in the result dict). The HiveMQ publish is also non-fatal (recorded in the result dict), but the CLI exits non-zero when it fails since the message is the hand-off. `tiktok_image_generator.py` can also chain straight into the uploader on its own via `--upload`.
 
@@ -57,12 +59,19 @@ uv run hivemq-publish --idea "a cat in red boots" --caption "..." --image-url ht
 uv run tiktok-comment https://www.tiktok.com/@user/video/123 --sentiment positive
 uv run tiktok-comment <url> --sentiment negative --about "a 12-step skincare routine"
 uv run tiktok-comment <url> --comment "Nice video!"      # publish exact text, no AI
+uv run tiktok-comment <url> --comment "Welcome!" --account @captgani  # use a specific TikTok account
+uv run tiktok-comment <url> --comment "Makasih kak!" --reply-to-author user210320127 --reply-to-text "makin plenger"   # one-off reply
 
 # Just generate a comment (no publish)
 uv run tiktok-comment-gen positive --about "homemade matcha latte"
+
+# Read a post's comments and reply to up to 5 of them (read-then-reply loop)
+uv run tiktok-reply-comment https://www.tiktok.com/@user/video/123 --sentiment friendly
+uv run tiktok-reply-comment <url> --max-replies 3 --language en --account @captgani
+uv run tiktok-reply-comment <url> --dry-run --json    # preview what a run would do
 ```
 
-Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-comment`→`comment_on_post`, `tiktok-comment-gen`→`comment_generator`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `hivemq-publish`→`hivemq_publisher` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
+Console-script → module map (in `pyproject.toml`): `tiktok-pipeline`→`tiktok_pipeline`, `tiktok-generate`→`tiktok_image_generator`, `tiktok-publish`→`tiktok_publish`, `tiktok-idea`→`idea_generator`, `tiktok-content`→`content_generator`, `tiktok-comment`→`comment_on_post`, `tiktok-comment-gen`→`comment_generator`, `tiktok-reply-comment`→`reply_to_comment`, `tiktok-profile`→`profile_loader`, `imagekit-upload`→`imagekit_uploader`, `hivemq-publish`→`hivemq_publisher` (each points at the module's `_cli`). Adding a dependency: `uv add <pkg>` (updates `pyproject.toml` + `uv.lock`). There is no test suite or linter config in this repo.
 
 ## Required environment
 
@@ -78,8 +87,10 @@ Optional:
 - `IMAGEKIT_URL_ENDPOINT` — public URL endpoint the uploader uses to build the returned image URL (`endpoint` + the uploaded `filePath`). Defaults to `https://ik.imagekit.io/salt/` when unset; a trailing slash is normalized.
 - `HIVEMQ_PORT` — HiveMQ broker TLS port. Defaults to `8883` when unset (`DEFAULT_PORT` in `hivemq_publisher.py`).
 - `HIVEMQ_TOPIC` — topic to publish to. Defaults to `tiktok/posts` when unset (`DEFAULT_TOPIC` in `hivemq_publisher.py`).
-- `HIVEMQ_COMMENT_TOPIC` — topic for the comment-on-a-post tool. Defaults to `tiktok/comments` when unset (`DEFAULT_COMMENT_TOPIC` in `hivemq_publisher.py`).
-- `HIVEMQ_CLIENT_ID` — MQTT client id for `publish_post`. Defaults to empty (broker assigns one) when unset. `publish_comment` ignores it and always uses a broker-assigned id, so the comment publisher can never collide with the agent's own client ids (which would disconnect the agent).
+- `HIVEMQ_COMMENT_TOPIC` — topic for the comment-on-a-post tool. Defaults to `tiktok/comments` when unset (`DEFAULT_COMMENT_TOPIC` in `hivemq_publisher.py`). The `tiktok-comment` skill uses it for both top-level comments and one-off replies (the `ReplyTo` field on the message distinguishes them).
+- `HIVEMQ_COMMENT_READ_TOPIC` — read-job topic for the read-then-reply loop. Defaults to `tiktok/comments-read` when unset (`DEFAULT_COMMENT_READ_TOPIC`). The `tiktok-reply-comment` skill publishes here; the downstream `tiktok-comment-reader` consumer subscribes.
+- `HIVEMQ_COMMENT_LIST_TOPIC` — comment-list topic. Defaults to `tiktok/comments-list` when unset (`DEFAULT_COMMENT_LIST_TOPIC`). The reader publishes here; `tiktok-reply-comment` (via `read_comment_list`) subscribes with a transient per-run client id (`tiktok-reply-<uuid>`) to collect the matching response.
+- `HIVEMQ_CLIENT_ID` — MQTT client id for `publish_post`. Defaults to empty (broker assigns one) when unset. `publish_comment`, `publish_comment_read`, and `read_comment_list` all ignore it — they force a per-run (uuid-suffixed) id so the backend can never collide with the agent's own client ids (`tiktok-agent`, `tiktok-commenter`, `tiktok-comment-reader`), any of which would disconnect the peer.
 - `TIKTOK_ACCOUNT` — optional, the `Account` field on every published post (a TikTok `@handle`, e.g. `@captgani`). The downstream tiktok-agent switches to it before posting; if the account is not active it reports `wrong_account` and does not post (see tiktok-agent `docs/post-image.md`). Set per-run (e.g. `TIKTOK_ACCOUNT=@captgani uv run tiktok-pipeline --profile gani ...`) since this repo only supports one value at a time.
 
 A local `.env` is loaded automatically: every module's `_cli()` calls `env_loader.load_env()` (a zero-dependency loader in `env_loader.py`) before parsing args, so you don't need to `source .env`. Real environment variables take precedence over `.env` values (`override=False`); the loader looks for `.env` next to the module first, then the cwd. Idea model ids use the `anthropic/` prefix on TokenRouter (default `anthropic/claude-haiku-4.5`); image model ids use `google/...` or `openai/...`.

@@ -67,5 +67,6 @@ build tiktok-content   content_generator      "content_generator env_loader"    
 build tiktok-image     tiktok_image_generator "tiktok_image_generator env_loader"                                                                          '"pillow>=10.0"'
 build tiktok-publish   tiktok_publish         "tiktok_publish imagekit_uploader hivemq_publisher env_loader"                                               '"requests>=2.31", "paho-mqtt>=2.0"'
 build tiktok-comment   comment_on_post        "comment_on_post comment_generator hivemq_publisher env_loader"                                              '"paho-mqtt>=2.0"'
+build tiktok-reply-comment reply_to_comment   "reply_to_comment comment_generator hivemq_publisher env_loader"                                              '"paho-mqtt>=2.0"'
 
 echo "Done. (SKILL.md / README.md are hand-maintained and not touched by this script.)"

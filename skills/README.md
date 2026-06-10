@@ -13,6 +13,7 @@ With the [`npx skills`](https://github.com/vercel-labs/skills) tool, from this r
 ```bash
 npx skills add <owner>/tiktok-pipeline/skills/tiktok-image      # one capability
 npx skills add <owner>/tiktok-pipeline/skills/tiktok-content    # another
+npx skills add <owner>/tiktok-pipeline/skills/tiktok-reply-comment  # read-then-reply loop
 ```
 
 Or install from a local checkout: `npx skills add ./skills/tiktok-image`. Installed
@@ -26,12 +27,15 @@ skills land in `~/.claude/skills/<name>/` (personal) or `.claude/skills/<name>/`
 | [`tiktok-content`](tiktok-content/SKILL.md) | From a topic → `{image_prompt, caption, description, hashtags}` | `TOKENROUTER_API_KEY` |
 | [`tiktok-image`](tiktok-image/SKILL.md) | Render a 9:16 1080x1920 image to a local PNG (multi-angle `--ref`) | `TOKENROUTER_API_KEY` |
 | [`tiktok-publish`](tiktok-publish/SKILL.md) | Publish an image to TikTok: upload to ImageKit + publish a pending post to HiveMQ | `IMAGEKIT_PRIVATE_KEY`, `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD` |
-| [`tiktok-comment`](tiktok-comment/SKILL.md) | Comment on an existing post: AI-write a comment from a sentiment (or take exact text) + publish to the `tiktok/comments` topic | `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD`, `TOKENROUTER_API_KEY` (generate only) |
+| [`tiktok-comment`](tiktok-comment/SKILL.md) | Comment on an existing post: AI-write a comment from a sentiment (or take exact text) + publish to the `tiktok/comments` topic. Also supports one-off replies (`--reply-to-author`) and the `Account` field (`--account`). | `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD`, `TOKENROUTER_API_KEY` (generate only) |
+| [`tiktok-reply-comment`](tiktok-reply-comment/SKILL.md) | Read-then-reply loop: scrape a post's comments via the downstream reader, AI-write a short reply to each, and publish them with `ReplyTo` set. State file dedups so re-runs don't spam. | `HIVEMQ_HOST`, `HIVEMQ_USERNAME`, `HIVEMQ_PASSWORD`, `TOKENROUTER_API_KEY`, optional `TIKTOK_ACCOUNT` |
 
 The skills are independent: install only the capabilities you need. A common chain
 is `tiktok-content` (image prompt + caption + hashtags) → `tiktok-image` (render the
 PNG from that prompt) → `tiktok-publish` (upload + queue it for TikTok).
-`tiktok-comment` is a standalone tool for leaving a comment on an existing post.
+`tiktok-comment` and `tiktok-reply-comment` are standalone tools for engaging with
+existing posts — the former for one-off top-level comments or one-off replies, the
+latter for batch-replying to a post's comments.
 
 ## Runtime
 

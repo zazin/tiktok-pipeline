@@ -1,6 +1,6 @@
 ---
 name: tiktok-comment
-description: Comment on an existing TikTok post. AI-writes a comment from a desired sentiment (e.g. positive/negative), or takes exact text, then publishes one {PostURL, Comment} message to the HiveMQ topic tiktok/comments; the downstream tiktok-agent opens the post by URL and leaves the comment. Use when you have a TikTok post URL and want a comment left on it. Requires HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD, and TOKENROUTER_API_KEY when generating (not when passing --comment).
+description: Comment on an existing TikTok post. AI-writes a comment from a desired sentiment (e.g. positive/negative), or takes exact text, then publishes one {PostURL, Comment} message to the HiveMQ topic tiktok/comments; the downstream tiktok-agent opens the post by URL and leaves the comment. Also supports one-off replies to a specific existing comment via --reply-to-author (and optional --reply-to-text) and the Account field via --account (or TIKTOK_ACCOUNT env var). Use when you have a TikTok post URL and want ONE comment left on it. For batch-replying to many comments on a post, use the tiktok-reply-comment skill instead. Requires HIVEMQ_HOST/HIVEMQ_USERNAME/HIVEMQ_PASSWORD, and TOKENROUTER_API_KEY when generating (not when passing --comment).
 ---
 
 # TikTok Comment (AI generate + HiveMQ publish)
@@ -10,6 +10,13 @@ Leaves a comment on an existing TikTok post. You give a post URL and either a
 verbatim). It publishes one `{PostURL, Comment}` JSON message on topic
 `tiktok/comments`; the downstream tiktok-agent subscribes, opens the post by URL,
 and types the comment (contract: tiktok-agent `docs/comment-on-post.md`).
+
+This skill also supports **one-off replies** to a specific existing comment via
+`--reply-to-author <@handle>` (and optionally `--reply-to-text <substring>`) — the
+agent opens the post, finds the target comment in the sheet, taps Reply, and types
+your text. For the **read-then-reply loop** (read the post's comments and reply
+to several of them in one run) use the [`tiktok-reply-comment`](../tiktok-reply-comment/SKILL.md)
+skill instead.
 
 This skill never looks at the post itself. By default it auto-fetches the post's
 caption + hashtags from TikTok's public oEmbed endpoint and uses that as the AI's
@@ -40,6 +47,13 @@ uv run scripts/comment_on_post.py <url> --sentiment negative --about "a 12-step 
 
 # publish an exact comment verbatim (no AI, no TOKENROUTER_API_KEY needed)
 uv run scripts/comment_on_post.py <url> --comment "Nice video!"
+
+# one-off reply to a specific existing comment (the agent taps Reply in the sheet)
+uv run scripts/comment_on_post.py <url> --comment "Makasih kak!" \
+    --reply-to-author user210320127 --reply-to-text "makin plenger"
+
+# leave the comment as a specific TikTok account (else uses TIKTOK_ACCOUNT env var)
+uv run scripts/comment_on_post.py <url> --comment "Welcome to the channel!" --account @captgani
 ```
 
 Without `uv`: `pip install paho-mqtt` then `python3 scripts/comment_on_post.py ...`.
@@ -61,6 +75,16 @@ Without `uv`: `pip install paho-mqtt` then `python3 scripts/comment_on_post.py .
   accented characters (it strips them, and submits nothing if nothing typeable
   remains).
 - `--topic TOPIC` — override the comment topic (default `tiktok/comments`).
+- `--account HANDLE` — TikTok `@handle` (e.g. `@captgani`) for the `Account` field.
+  The agent switches to this account before opening the post; if it can't be
+  made active it reports `wrong_account` and does not comment. Default: explicit
+  value > `TIKTOK_ACCOUNT` env var > omitted.
+- `--reply-to-author HANDLE` — make the comment a *reply* to an existing top-level
+  comment by this author. The `author` value comes from a `tiktok/comments-list`
+  message (see [`tiktok-reply-comment`](../tiktok-reply-comment/SKILL.md) for the
+  loop that produces those). Sets `ReplyTo.author` on the published message.
+- `--reply-to-text SUBSTRING` — disambiguates when `--reply-to-author` has multiple
+  comments on the post. Optional; matched ASCII-folded.
 - `--json` — print the full result JSON.
 
 ## Output & errors

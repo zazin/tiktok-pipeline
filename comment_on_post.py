@@ -25,10 +25,23 @@ Usage (CLI):
     # publish an exact comment verbatim (no AI)
     python comment_on_post.py <url> --comment "Nice video!"
 
+    # reply to a specific existing comment (one-off, no read loop)
+    python comment_on_post.py <url> --comment "Makasih kak!" --reply-to-author user210320127 --reply-to-text "makin plenger"
+
+    # leave the comment as a specific TikTok account (else uses TIKTOK_ACCOUNT env var)
+    python comment_on_post.py <url> --comment "Welcome to the channel!" --account @captgani
+
 Usage (as a module):
     from comment_on_post import comment_on_post
     result = comment_on_post("https://.../video/123", sentiment="positive")
     print(result["comment"], result["hivemq"]["topic"])
+
+    # Reply to a specific comment
+    result = comment_on_post(
+        "https://.../video/123",
+        comment="Makasih kak!",
+        reply_to={"author": "user210320127", "text": "makin plenger"},
+    )
 """
 
 from __future__ import annotations
@@ -105,12 +118,25 @@ def comment_on_post(
     ascii_only: bool = True,
     topic: Optional[str] = None,
     auto_context: bool = True,
+    account: Optional[str] = None,
+    reply_to: Optional[dict] = None,
 ) -> dict:
     """
     Generate (or accept) a comment and publish it for an existing TikTok post.
 
     Provide EITHER ``comment`` (published verbatim) OR ``sentiment`` (the AI writes
     the comment from that intent). ``about`` gives the AI context about the post.
+
+    Two optional fields are forwarded to the publish:
+
+    - ``account`` — TikTok @handle. Resolved via the same chain as the post
+      publisher (explicit > ``TIKTOK_ACCOUNT`` env var > omitted). The agent
+      switches to that account before opening the post; if it can't, it reports
+      ``wrong_account`` and does not comment.
+    - ``reply_to`` — dict ``{"author": <@handle>, "text"?: <substring>}`` to
+      submit the comment as a *reply to* an existing top-level comment. Requires
+      ``reply_to["author"]`` to be non-empty; ``text`` is optional and only
+      disambiguates when the same author has multiple comments on the post.
 
     Args:
         post_url: Full TikTok post URL to comment on.
@@ -124,9 +150,12 @@ def comment_on_post(
         auto_context: When True and ``about`` is not provided, fetch post context from
             TikTok's public oEmbed endpoint and pass it as ``about``. Falls back to
             a context-less comment with a stderr warning if oEmbed fails.
+        account: TikTok @handle for the ``Account`` field. Explicit > env var > omit.
+        reply_to: ``{"author": <@handle>, "text"?: <substring>}`` for a reply to
+            an existing top-level comment. ``author`` must be non-empty.
 
     Returns:
-        {"comment": <published text>, "hivemq": <publish dict>}.
+        ``{"comment": <published text>, "hivemq": <publish dict>}``.
 
     Raises:
         CommentError: On empty/invalid input, generation failure, or publish failure.
@@ -135,6 +164,9 @@ def comment_on_post(
     if not post_url:
         raise CommentError("post_url must not be empty.")
 
+    # If the caller asked for a reply but didn't supply a comment, fall through
+    # to AI generation as usual — generate_comment doesn't need reply_to, the
+    # AI just writes a regular comment that we then attach ReplyTo to below.
     text = (comment or "").strip()
     if text:
         # Verbatim path. Still match what the agent can actually type unless opted out.
@@ -166,9 +198,30 @@ def comment_on_post(
     if not text:
         raise CommentError("Comment is empty after cleaning; nothing to publish.")
 
+    # Build a normalised reply_to dict so the publisher's validation runs on
+    # consistent types (the publisher accepts an optional dict; we only pass it
+    # when the caller actually asked for a reply, otherwise None).
+    rt: Optional[dict] = None
+    if reply_to is not None:
+        if not isinstance(reply_to, dict):
+            raise CommentError("reply_to must be a dict {'author': <@handle>, 'text'?: <substring>}")
+        author = (reply_to.get("author") or "").strip()
+        if not author:
+            raise CommentError("reply_to['author'] must be non-empty (the agent drops such messages).")
+        rt = {"author": author}
+        raw_text = reply_to.get("text")
+        if raw_text is not None and str(raw_text).strip():
+            rt["text"] = str(raw_text).strip()
+
     from hivemq_publisher import publish_comment, HiveMQError
     try:
-        info = publish_comment(post_url, text, topic=topic)
+        info = publish_comment(
+            post_url,
+            text,
+            account=account,
+            reply_to=rt,
+            topic=topic,
+        )
     except HiveMQError as e:
         raise CommentError(f"HiveMQ publish failed: {e}") from e
 
@@ -191,8 +244,19 @@ def _cli() -> int:
     parser.add_argument("--keep-non-ascii", action="store_true", help="Do NOT strip non-ASCII (the agent strips it anyway when typing)")
     parser.add_argument("--topic", default=None, help="MQTT topic (default: HIVEMQ_COMMENT_TOPIC or tiktok/comments)")
     parser.add_argument("--no-auto-context", dest="auto_context", action="store_false", help="Skip the oEmbed auto-context fetch (default: fetch and use as --about when --about is not given)")
+    parser.add_argument("--account", default=None, help="TikTok @handle (e.g. @captgani) — agent switches account before commenting. Default: TIKTOK_ACCOUNT env var, else omitted.")
+    parser.add_argument("--reply-to-author", dest="reply_to_author", default=None, help="Reply to this comment author (the @handle from a comments-list message). Requires --reply-to-text when the same author has multiple comments on the post. Implies ReplyTo is set on the published message.")
+    parser.add_argument("--reply-to-text", dest="reply_to_text", default=None, help="Substring of the target comment's text — disambiguates when --reply-to-author has multiple comments. Optional but recommended.")
     parser.add_argument("--json", action="store_true", help="Print the full result JSON")
     args = parser.parse_args()
+
+    # Build reply_to dict from the two CLI flags (only when --reply-to-author was
+    # given; --reply-to-text alone is ignored so we don't silently mis-construct).
+    reply_to: Optional[dict] = None
+    if args.reply_to_author:
+        reply_to = {"author": args.reply_to_author}
+        if args.reply_to_text:
+            reply_to["text"] = args.reply_to_text
 
     try:
         result = comment_on_post(
@@ -205,6 +269,8 @@ def _cli() -> int:
             ascii_only=not args.keep_non_ascii,
             topic=args.topic,
             auto_context=args.auto_context,
+            account=args.account,
+            reply_to=reply_to,
         )
     except CommentError as e:
         print(f"Error: {e}", file=sys.stderr)

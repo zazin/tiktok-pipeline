@@ -19,6 +19,7 @@ tiktok-idea = "idea_generator:_cli"
 tiktok-content = "content_generator:_cli"
 tiktok-comment = "comment_on_post:_cli"
 tiktok-comment-gen = "comment_generator:_cli"
+tiktok-reply-comment = "reply_to_comment:_cli"
 tiktok-profile = "profile_loader:_cli"
 imagekit-upload = "imagekit_uploader:_cli"
 hivemq-publish = "hivemq_publisher:_cli"
@@ -41,6 +42,7 @@ include = [
     "content_generator.py",
     "comment_on_post.py",
     "comment_generator.py",
+    "reply_to_comment.py",
     "profile_loader.py",
     "imagekit_uploader.py",
     "hivemq_publisher.py",

@@ -16,9 +16,16 @@ Usage (CLI):
     python comment_generator.py negative --about "a 12-step skincare routine" --json
     python comment_generator.py "ask a friendly question" --about "homemade matcha latte"
 
+    # Reply to a specific comment (used by reply_to_comment.py, not the CLI)
+    python -c "from comment_generator import generate_reply; print(generate_reply('friendly', comment_text='makin plenger', comment_author='user210320127'))"
+
 Usage (as a module):
     from comment_generator import generate_comment
     text = generate_comment("positive", about="a jade-green matcha latte on marble")
+    print(text)
+
+    from comment_generator import generate_reply
+    text = generate_reply("grateful", comment_text="makin plenger", comment_author="user210320127")
     print(text)
 """
 
@@ -66,6 +73,30 @@ def _language_clause(language: str) -> str:
         return "\nWrite the comment in ENGLISH."
     # default "id"
     return "\nWrite the comment in Indonesian (Bahasa Indonesia), natural and casual."
+
+
+# A second system prompt tailored for REPLIES — the model is shown both the comment
+# being replied to (author + text) and an optional post context, and asked to write
+# a short reply that addresses that specific comment. The rules are the same
+# (ASCII, no emoji, no hashtags, one line) but the "respond to this specific
+# comment" framing is essential — otherwise the model drifts into top-level
+# comments about the post and ignores the input.
+_REPLY_SYSTEM_PROMPT = (
+    "You are a real person leaving ONE short REPLY to an existing comment on a "
+    "TikTok video. You are given the comment's author handle and text, plus an "
+    "optional short note about what the video is about for context.\n"
+    "Rules:\n"
+    "- Respond with ONLY the reply text — no quotes, no JSON, no markdown, no "
+    "hashtags, no emojis, and no surrounding explanation.\n"
+    "- Address the COMMENT you are replying to (react to what they actually said), "
+    "not the video itself. Keep it conversational — it should feel like a real "
+    "person responding in a thread, not a fresh standalone comment.\n"
+    "- Keep it to one line, casual and human, under ~120 characters.\n"
+    "- Use ONLY plain ASCII characters (no emoji, no accented letters): the reply "
+    "is typed by a device that cannot enter non-ASCII characters.\n"
+    "- Match the requested sentiment. If it is negative/critical, keep it as a "
+    "blunt opinion, not harassment, slurs, or threats."
+)
 
 
 class CommentGenError(Exception):
@@ -170,6 +201,127 @@ def generate_comment(
     if not comment:
         raise CommentGenError("Model returned an empty comment after cleaning.")
     return comment
+
+
+def generate_reply(
+    sentiment: str,
+    *,
+    comment_text: str,
+    comment_author: str,
+    about: Optional[str] = None,
+    language: str = DEFAULT_LANGUAGE,
+    model: str = DEFAULT_MODEL,
+    ascii_only: bool = True,
+    max_tokens: int = 120,
+    timeout: int = 60,
+) -> str:
+    """
+    Generate one TikTok REPLY to an existing comment on a post.
+
+    Unlike ``generate_comment`` (which writes a top-level comment from a sentiment +
+    optional post context), this is given a specific comment to react to — author
+    handle and text — and produces a short reply that addresses that comment. Used
+    by ``reply_to_comment.reply_to_comments`` for the read-then-reply loop.
+
+    The output is the reply text. The caller is responsible for placing it on the
+    right post via ``hivemq_publisher.publish_comment(post_url, reply, reply_to={...})``,
+    where ``reply_to`` carries the same ``{author, text?}`` the model was given.
+
+    Args:
+        sentiment: The desired tone/intent of the reply, e.g. ``"friendly"``,
+            ``"grateful"``, ``"supportive"``, ``"answer a question"``, ``"witty"``.
+        comment_text: The text of the comment being replied to. Must be non-empty.
+        comment_author: The author handle of the comment being replied to
+            (without the leading ``@``). Must be non-empty — used as the model
+            input AND later echoed back in ``ReplyTo.author`` for the agent to
+            find the comment in the sheet.
+        about: Optional short note about what the post is about, so the reply
+            has video context if the comment doesn't make it self-evident.
+        language: Reply language — ``"id"`` (Indonesian, default) or ``"en"``.
+        model: TokenRouter model ID.
+        ascii_only: Strip non-ASCII from the result (default True) so it
+            survives the agent's ``adb input text`` typing.
+        max_tokens: Response cap.
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        The reply string.
+
+    Raises:
+        CommentGenError: On empty sentiment/comment_text/comment_author, missing
+            key, API/network error, or an empty result.
+    """
+    if not sentiment or not sentiment.strip():
+        raise CommentGenError("Sentiment must not be empty.")
+    if not comment_text or not comment_text.strip():
+        raise CommentGenError("comment_text must not be empty (nothing to reply to).")
+    if not comment_author or not comment_author.strip():
+        raise CommentGenError("comment_author must not be empty (used to target the reply).")
+    if language not in LANGUAGES:
+        raise CommentGenError(f"Unsupported language {language!r}; choose one of {LANGUAGES}.")
+
+    # Strip the leading @ if the caller passed it (the model doesn't need it;
+    # the agent's ReplyTo.author also tolerates a leading @, so being lenient
+    # on the way in keeps the data flow simple).
+    author_handle = comment_author.strip().lstrip("@")
+    if not author_handle:
+        raise CommentGenError("comment_author must contain non-@ characters.")
+
+    parts = [
+        f"Desired sentiment/intent for the reply: {sentiment.strip()}",
+        f"Comment author: @{author_handle}",
+        f"Comment text: {comment_text.strip()}",
+    ]
+    if about and about.strip():
+        parts.append(f"Video context (for grounding, do NOT comment on the video directly): {about.strip()}")
+    user_msg = "\n".join(parts)
+
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": _REPLY_SYSTEM_PROMPT + _language_clause(language)},
+            {"role": "user", "content": user_msg},
+        ],
+    }
+    body = json.dumps(payload).encode()
+
+    req = urllib.request.Request(
+        f"{TOKENROUTER_BASE_URL}/chat/completions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {_get_api_key()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")[:500]
+        raise CommentGenError(f"HTTP {e.code} from TokenRouter: {err_body}") from e
+    except urllib.error.URLError as e:
+        raise CommentGenError(f"Network error: {e}") from e
+    except json.JSONDecodeError as e:
+        raise CommentGenError(f"Invalid JSON response: {e}") from e
+
+    if "error" in resp:
+        raise CommentGenError(f"API error: {resp['error']}")
+
+    try:
+        content = resp["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as e:
+        raise CommentGenError(f"Unexpected response shape: {e}; body={str(resp)[:300]}")
+
+    if isinstance(content, list):
+        content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+
+    reply = _clean_comment(content or "", ascii_only=ascii_only)
+    if not reply:
+        raise CommentGenError("Model returned an empty reply after cleaning.")
+    return reply
 
 
 def _clean_comment(text: str, *, ascii_only: bool = True, limit: int = COMMENT_MAX_CHARS) -> str:
